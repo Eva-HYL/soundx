@@ -1,0 +1,650 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserStatus {
+  DISABLED
+  ACTIVE
+}
+
+enum RoleType {
+  USER
+  PLAYER
+  CLUB_ADMIN
+  PLATFORM_ADMIN
+  SUPER_ADMIN
+}
+
+enum ClubStatus {
+  DISABLED
+  ACTIVE
+  TRIAL
+  EXPIRED
+}
+
+enum ClubStaffRole {
+  OWNER
+  ADMIN
+  FINANCE
+  SERVICE
+}
+
+enum PlayerProfileStatus {
+  PENDING
+  ACTIVE
+  DISABLED
+  REJECTED
+}
+
+enum PlayerWorkStatusType {
+  OFFLINE
+  ONLINE
+  BUSY
+  RESTING
+}
+
+enum OrderType {
+  DESIGNATED
+  NORMAL
+  URGENT
+  NEWBIE
+}
+
+enum DispatchMode {
+  GRAB
+  ASSIGN
+  DESIGNATED
+}
+
+enum OrderStatus {
+  PENDING_PAYMENT
+  PAID_PENDING_DISPATCH
+  PENDING_ACCEPT
+  ACCEPTED
+  IN_SERVICE
+  PENDING_REPORT
+  PENDING_REPORT_AUDIT
+  COMPLETED
+  CANCELLED
+  CLOSED
+}
+
+enum DispatchStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+  EXPIRED
+  CANCELLED
+}
+
+enum ReportStatus {
+  DRAFT
+  SUBMITTED
+  APPROVED
+  REJECTED
+}
+
+enum PointsFlowType {
+  ORDER_INCOME
+  REWARD_INCOME
+  WITHDRAW_FREEZE
+  WITHDRAW_DEDUCT
+  WITHDRAW_UNFREEZE
+  MANUAL_ADJUST
+  PENALTY
+}
+
+enum BizType {
+  ORDER
+  REPORT
+  REWARD
+  WITHDRAW
+  SUBSCRIPTION
+  MANUAL
+}
+
+enum WithdrawStatus {
+  PENDING_REVIEW
+  APPROVED_PENDING_TRANSFER
+  TRANSFERRED_PENDING_CONFIRM
+  COMPLETED
+  REJECTED
+  CANCELLED
+}
+
+enum PaymentConfirmationStatus {
+  CONFIRMED
+  REJECTED
+  INVALID
+}
+
+enum TransferRecordStatus {
+  PENDING
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+enum RewardPaymentStatus {
+  PENDING_PAYMENT
+  PAID_PENDING_CONFIRM
+  CONFIRMED
+  REJECTED
+  CANCELLED
+}
+
+enum DispatchModeConfig {
+  GRAB_ONLY
+  ASSIGN_ONLY
+  MIXED
+}
+
+model User {
+  id          BigInt     @id @default(autoincrement())
+  openid      String     @unique @db.VarChar(64)
+  unionid     String?    @db.VarChar(64)
+  nickname    String?    @db.VarChar(100)
+  avatar      String?    @db.VarChar(255)
+  phone       String?    @db.VarChar(20)
+  gender      Int        @default(0) @db.TinyInt
+  status      UserStatus @default(ACTIVE)
+  lastLoginAt DateTime?
+  lastLoginIp String?    @db.VarChar(64)
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  roles                     UserRole[]
+  ownedClubs                Club[]                @relation("ClubOwner")
+  clubMemberships           UserClub[]
+  playerProfile             Player?
+  clubStaffMemberships      ClubStaff[]
+  createdOrders             Order[]               @relation("OrderUser")
+  paymentConfirmations      PaymentConfirmation[] @relation("PaymentConfirmedBy")
+  paymentPayerConfirmations PaymentConfirmation[] @relation("PaymentPayer")
+  operatedTransfers         TransferRecord[]      @relation("TransferOperator")
+  operatedLogs              OperationLog[]        @relation("OperationOperator")
+
+  @@map("user")
+}
+
+model UserRole {
+  id        BigInt   @id @default(autoincrement())
+  userId    BigInt
+  role      RoleType
+  clubId    BigInt?
+  status    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User  @relation(fields: [userId], references: [id])
+  club Club? @relation(fields: [clubId], references: [id])
+
+  @@unique([userId, role, clubId])
+  @@index([role, clubId])
+  @@map("user_role")
+}
+
+model Club {
+  id          BigInt     @id @default(autoincrement())
+  name        String     @unique @db.VarChar(100)
+  logo        String?    @db.VarChar(255)
+  description String?    @db.Text
+  ownerId     BigInt
+  ownerName   String     @db.VarChar(100)
+  ownerPhone  String     @db.VarChar(20)
+  ownerWechat String     @db.VarChar(50)
+  clubType    Int        @default(1) @db.TinyInt
+  status      ClubStatus @default(TRIAL)
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  owner                User                  @relation("ClubOwner", fields: [ownerId], references: [id])
+  roles                UserRole[]
+  members              UserClub[]
+  players              Player[]
+  staffs               ClubStaff[]
+  config               ClubConfig?
+  services             PlayerService[]
+  orders               Order[]
+  dispatches           OrderDispatch[]
+  reports              ServiceReport[]
+  playerPoints         PlayerPoints[]
+  pointsFlows          PointsFlow[]
+  withdraws            Withdraw[]
+  rewards              Reward[]
+  paymentConfirmations PaymentConfirmation[]
+  transfers            TransferRecord[]
+  operationLogs        OperationLog[]
+  playerClubApplies    PlayerClubApply[]
+
+  @@index([ownerId])
+  @@index([status])
+  @@map("club")
+}
+
+model ClubStaff {
+  id        BigInt        @id @default(autoincrement())
+  clubId    BigInt
+  userId    BigInt
+  staffRole ClubStaffRole
+  status    Boolean       @default(true)
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+
+  club Club @relation(fields: [clubId], references: [id])
+  user User @relation(fields: [userId], references: [id])
+
+  @@unique([clubId, userId, staffRole])
+  @@index([userId])
+  @@map("club_staff")
+}
+
+model UserClub {
+  id        BigInt   @id @default(autoincrement())
+  userId    BigInt
+  clubId    BigInt
+  isCurrent Boolean  @default(false)
+  joinedAt  DateTime @default(now())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id])
+  club Club @relation(fields: [clubId], references: [id])
+
+  @@unique([userId, clubId])
+  @@index([userId, isCurrent])
+  @@index([clubId, userId])
+  @@map("user_club")
+}
+
+model Player {
+  id            BigInt              @id @default(autoincrement())
+  userId        BigInt              @unique
+  clubId        BigInt
+  nickname      String?             @db.VarChar(100)
+  avatar        String?             @db.VarChar(255)
+  level         Int                 @default(1) @db.TinyInt
+  profileStatus PlayerProfileStatus @default(PENDING)
+  ability       String?             @db.VarChar(50)
+  description   String?             @db.Text
+  voiceUrl      String?             @db.VarChar(500)
+  voiceDuration Int                 @default(0)
+  successRate   Decimal             @default(85.00) @db.Decimal(5, 2)
+  rating        Decimal             @default(4.50) @db.Decimal(3, 2)
+  totalOrders   Int                 @default(0)
+  createdAt     DateTime            @default(now())
+  updatedAt     DateTime            @updatedAt
+
+  user             User              @relation(fields: [userId], references: [id])
+  club             Club              @relation(fields: [clubId], references: [id])
+  workStatus       PlayerWorkStatus?
+  services         PlayerService[]
+  applications     PlayerClubApply[]
+  acceptedOrders   Order[]           @relation("OrderPlayer")
+  dispatchTargets  OrderDispatch[]   @relation("DispatchTargetPlayer")
+  dispatchAccepted OrderDispatch[]   @relation("DispatchAcceptedPlayer")
+  reports          ServiceReport[]
+  pointsAccount    PlayerPoints[]
+  pointsFlows      PointsFlow[]
+  withdraws        Withdraw[]
+  rewards          Reward[]
+
+  @@index([clubId])
+  @@index([profileStatus, level])
+  @@index([rating])
+  @@map("player")
+}
+
+model PlayerWorkStatus {
+  id               BigInt               @id @default(autoincrement())
+  playerId         BigInt               @unique
+  workStatus       PlayerWorkStatusType @default(OFFLINE)
+  todayOrderCount  Int                  @default(0)
+  todayRefuseCount Int                  @default(0)
+  lastActiveAt     DateTime?
+  updatedAt        DateTime             @updatedAt
+
+  player Player @relation(fields: [playerId], references: [id])
+
+  @@map("player_work_status")
+}
+
+model PlayerService {
+  id          BigInt   @id @default(autoincrement())
+  playerId    BigInt
+  clubId      BigInt
+  serviceType String   @db.VarChar(50)
+  price       Decimal  @db.Decimal(10, 2)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  player Player @relation(fields: [playerId], references: [id])
+  club   Club   @relation(fields: [clubId], references: [id])
+
+  @@index([playerId])
+  @@index([clubId])
+  @@map("player_service")
+}
+
+model ClubConfig {
+  id                BigInt             @id @default(autoincrement())
+  clubId            BigInt             @unique
+  packageType       Int                @default(1) @db.TinyInt
+  playerLimit       Int                @default(50)
+  featureVoice      Boolean            @default(true)
+  featureTask       Boolean            @default(true)
+  featureWelfare    Boolean            @default(true)
+  minWithdrawAmount Decimal            @default(50.00) @db.Decimal(10, 2)
+  withdrawFeeRate   Decimal            @default(0.00) @db.Decimal(5, 2)
+  dispatchMode      DispatchModeConfig @default(MIXED)
+  serviceNotice     String?            @db.VarChar(500)
+  paymentNotice     String?            @db.VarChar(500)
+  expiredAt         DateTime?
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+
+  club Club @relation(fields: [clubId], references: [id])
+
+  @@map("club_config")
+}
+
+model PlayerClubApply {
+  id          BigInt    @id @default(autoincrement())
+  playerId    BigInt
+  clubId      BigInt
+  applyReason String?   @db.VarChar(500)
+  status      Int       @default(0) @db.TinyInt
+  reviewerId  BigInt?
+  reviewTime  DateTime?
+  reviewNote  String?   @db.VarChar(500)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  player Player @relation(fields: [playerId], references: [id])
+  club   Club   @relation(fields: [clubId], references: [id])
+
+  @@unique([playerId, clubId])
+  @@index([clubId, status])
+  @@map("player_club_apply")
+}
+
+model Order {
+  id                 BigInt        @id @default(autoincrement())
+  orderNo            String        @unique @db.VarChar(32)
+  userId             BigInt
+  clubId             BigInt
+  playerId           BigInt?
+  playerName         String?       @db.VarChar(100)
+  orderType          OrderType     @default(NORMAL)
+  dispatchMode       DispatchMode?
+  serviceType        String        @db.VarChar(50)
+  pricePerHour       Decimal       @db.Decimal(10, 2)
+  hours              Decimal       @db.Decimal(5, 2)
+  totalAmount        Decimal       @db.Decimal(10, 2)
+  status             OrderStatus   @default(PENDING_PAYMENT)
+  userRemark         String?       @db.VarChar(500)
+  adminRemark        String?       @db.VarChar(500)
+  paymentConfirmedAt DateTime?
+  paymentConfirmedBy BigInt?
+  acceptedAt         DateTime?
+  startedAt          DateTime?
+  finishedAt         DateTime?
+  cancelledAt        DateTime?
+  cancelledBy        BigInt?
+  cancelReason       String?       @db.VarChar(500)
+  createdAt          DateTime      @default(now())
+  updatedAt          DateTime      @updatedAt
+
+  user                 User                  @relation("OrderUser", fields: [userId], references: [id])
+  club                 Club                  @relation(fields: [clubId], references: [id])
+  player               Player?               @relation("OrderPlayer", fields: [playerId], references: [id])
+  dispatches           OrderDispatch[]
+  report               ServiceReport?
+  rewards              Reward[]
+  paymentConfirmations PaymentConfirmation[]
+
+  @@index([userId])
+  @@index([clubId])
+  @@index([playerId])
+  @@index([status])
+  @@index([createdAt])
+  @@map("order")
+}
+
+model OrderDispatch {
+  id               BigInt         @id @default(autoincrement())
+  orderId          BigInt
+  clubId           BigInt
+  dispatchMode     DispatchMode
+  status           DispatchStatus @default(PENDING)
+  targetPlayerId   BigInt?
+  acceptedPlayerId BigInt?
+  dispatchTime     DateTime
+  expireTime       DateTime?
+  acceptedAt       DateTime?
+  rejectedAt       DateTime?
+  rejectReason     String?        @db.VarChar(255)
+  createdBy        BigInt?
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+
+  order          Order   @relation(fields: [orderId], references: [id])
+  club           Club    @relation(fields: [clubId], references: [id])
+  targetPlayer   Player? @relation("DispatchTargetPlayer", fields: [targetPlayerId], references: [id])
+  acceptedPlayer Player? @relation("DispatchAcceptedPlayer", fields: [acceptedPlayerId], references: [id])
+
+  @@index([orderId])
+  @@index([status, expireTime])
+  @@index([targetPlayerId])
+  @@map("order_dispatch")
+}
+
+model ServiceReport {
+  id              BigInt       @id @default(autoincrement())
+  orderId         BigInt       @unique
+  clubId          BigInt
+  playerId        BigInt
+  status          ReportStatus @default(SUBMITTED)
+  startTime       DateTime
+  endTime         DateTime
+  durationMinutes Int
+  content         String       @db.VarChar(1000)
+  attachments     Json?
+  userConfirmed   Boolean      @default(false)
+  reviewerId      BigInt?
+  reviewTime      DateTime?
+  rejectReason    String?      @db.VarChar(255)
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  order  Order  @relation(fields: [orderId], references: [id])
+  club   Club   @relation(fields: [clubId], references: [id])
+  player Player @relation(fields: [playerId], references: [id])
+
+  @@index([playerId])
+  @@index([clubId, status])
+  @@map("service_report")
+}
+
+model PlayerPoints {
+  id                 BigInt   @id @default(autoincrement())
+  playerId           BigInt
+  clubId             BigInt
+  totalPoints        Int      @default(0)
+  availablePoints    Int      @default(0)
+  frozenPoints       Int      @default(0)
+  withdrawablePoints Int      @default(0)
+  version            Int      @default(0)
+  updatedAt          DateTime @updatedAt
+
+  player Player @relation(fields: [playerId], references: [id])
+  club   Club   @relation(fields: [clubId], references: [id])
+
+  @@unique([playerId, clubId])
+  @@index([clubId])
+  @@index([withdrawablePoints])
+  @@map("player_points")
+}
+
+model PointsFlow {
+  id         BigInt         @id @default(autoincrement())
+  playerId   BigInt
+  clubId     BigInt
+  flowType   PointsFlowType
+  bizType    BizType?
+  bizId      BigInt?
+  points     Int
+  balance    Int
+  operatorId BigInt?
+  remark     String?        @db.VarChar(255)
+  createdAt  DateTime       @default(now())
+
+  player Player @relation(fields: [playerId], references: [id])
+  club   Club   @relation(fields: [clubId], references: [id])
+
+  @@index([playerId, createdAt])
+  @@index([bizType, bizId])
+  @@map("points_flow")
+}
+
+model Withdraw {
+  id                 BigInt         @id @default(autoincrement())
+  playerId           BigInt
+  clubId             BigInt
+  amount             Decimal        @db.Decimal(10, 2)
+  points             Int
+  wechatId           String         @db.VarChar(100)
+  wechatName         String         @db.VarChar(100)
+  status             WithdrawStatus @default(PENDING_REVIEW)
+  reviewerId         BigInt?
+  reviewTime         DateTime?
+  reviewNote         String?        @db.VarChar(500)
+  transferOperatorId BigInt?
+  transferAt         DateTime?
+  transferChannel    String?        @db.VarChar(32)
+  transferVoucherUrl String?        @db.VarChar(500)
+  completedAt        DateTime?
+  createdAt          DateTime       @default(now())
+  updatedAt          DateTime       @updatedAt
+
+  player    Player           @relation(fields: [playerId], references: [id])
+  club      Club             @relation(fields: [clubId], references: [id])
+  transfers TransferRecord[]
+
+  @@index([playerId])
+  @@index([clubId])
+  @@index([status])
+  @@map("withdraw")
+}
+
+model Reward {
+  id                 BigInt              @id @default(autoincrement())
+  orderId            BigInt
+  userId             BigInt
+  playerId           BigInt
+  clubId             BigInt
+  baseAmount         Decimal             @default(0.00) @db.Decimal(10, 2)
+  premiumServices    Json?
+  premiumAmount      Decimal             @default(0.00) @db.Decimal(10, 2)
+  totalAmount        Decimal             @db.Decimal(10, 2)
+  paymentStatus      RewardPaymentStatus @default(PENDING_PAYMENT)
+  message            String?             @db.VarChar(500)
+  rejectReason       String?             @db.VarChar(500)
+  confirmedBy        BigInt?
+  confirmedAt        DateTime?
+  transferVoucherUrl String?             @db.VarChar(500)
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+
+  order  Order  @relation(fields: [orderId], references: [id])
+  player Player @relation(fields: [playerId], references: [id])
+  club   Club   @relation(fields: [clubId], references: [id])
+
+  @@index([orderId])
+  @@index([userId])
+  @@index([playerId])
+  @@index([clubId])
+  @@map("reward")
+}
+
+model PaymentConfirmation {
+  id              BigInt                    @id @default(autoincrement())
+  bizType         BizType
+  bizId           BigInt
+  clubId          BigInt?
+  payerUserId     BigInt?
+  orderId         BigInt?
+  expectedAmount  Decimal                   @db.Decimal(10, 2)
+  confirmedAmount Decimal                   @db.Decimal(10, 2)
+  status          PaymentConfirmationStatus @default(CONFIRMED)
+  confirmMethod   String?                   @default("manual") @db.VarChar(32)
+  confirmNote     String?                   @db.VarChar(255)
+  voucherUrl      String?                   @db.VarChar(500)
+  confirmedBy     BigInt
+  confirmedAt     DateTime
+  createdAt       DateTime                  @default(now())
+
+  club      Club?  @relation(fields: [clubId], references: [id])
+  payerUser User?  @relation("PaymentPayer", fields: [payerUserId], references: [id])
+  order     Order? @relation(fields: [orderId], references: [id])
+  confirmer User   @relation("PaymentConfirmedBy", fields: [confirmedBy], references: [id])
+
+  @@index([bizType, bizId])
+  @@index([confirmedBy])
+  @@map("payment_confirmation")
+}
+
+model TransferRecord {
+  id           BigInt               @id @default(autoincrement())
+  bizType      BizType
+  bizId        BigInt
+  clubId       BigInt?
+  withdrawId   BigInt?
+  payeeUserId  BigInt?
+  amount       Decimal              @db.Decimal(10, 2)
+  channel      String               @default("wechat") @db.VarChar(32)
+  accountName  String?              @db.VarChar(100)
+  accountNo    String?              @db.VarChar(100)
+  voucherUrl   String?              @db.VarChar(500)
+  status       TransferRecordStatus @default(COMPLETED)
+  operatorId   BigInt
+  transferTime DateTime
+  remark       String?              @db.VarChar(255)
+  createdAt    DateTime             @default(now())
+
+  club     Club?     @relation(fields: [clubId], references: [id])
+  withdraw Withdraw? @relation(fields: [withdrawId], references: [id])
+  operator User      @relation("TransferOperator", fields: [operatorId], references: [id])
+
+  @@index([bizType, bizId])
+  @@index([operatorId])
+  @@map("transfer_record")
+}
+
+model OperationLog {
+  id           BigInt   @id @default(autoincrement())
+  operatorId   BigInt
+  operatorRole String   @db.VarChar(32)
+  clubId       BigInt?
+  bizType      BizType
+  bizId        BigInt
+  action       String   @db.VarChar(64)
+  beforeData   Json?
+  afterData    Json?
+  requestId    String?  @db.VarChar(64)
+  ip           String?  @db.VarChar(64)
+  userAgent    String?  @db.VarChar(255)
+  createdAt    DateTime @default(now())
+
+  operator User  @relation("OperationOperator", fields: [operatorId], references: [id])
+  club     Club? @relation(fields: [clubId], references: [id])
+
+  @@index([bizType, bizId])
+  @@index([operatorId, createdAt])
+  @@map("operation_log")
+}
