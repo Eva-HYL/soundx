@@ -41,3 +41,6 @@ prisma/migrations/dev.db*
 
 # generated
 packages/api-client/src/generated/
+
+
+apps/miniapp/.swc

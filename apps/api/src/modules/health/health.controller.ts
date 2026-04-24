@@ -17,9 +17,7 @@ export class HealthController {
   @ApiOperation({ summary: '健康检查' })
   async check() {
     const [db, cache] = await Promise.all([
-      this.prisma
-        .$queryRaw`SELECT 1`.then(() => 'up')
-        .catch(() => 'down'),
+      this.prisma.$queryRaw`SELECT 1`.then(() => 'up').catch(() => 'down'),
       this.redis.raw
         .ping()
         .then(() => 'up')

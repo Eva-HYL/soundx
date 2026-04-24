@@ -6,17 +6,9 @@ import { GAMES, PENDING_REPORTS } from '../../mock/data';
 const { Text, Title, Paragraph } = Typography;
 
 type Report = (typeof PENDING_REPORTS)[number];
-const GAME_MAP = Object.fromEntries(GAMES.map((g) => [g.id, g]));
+const GAME_MAP = Object.fromEntries(GAMES.map(g => [g.id, g]));
 
-function QueueCard({
-  r,
-  active,
-  onClick,
-}: {
-  r: Report;
-  active: boolean;
-  onClick: () => void;
-}) {
+function QueueCard({ r, active, onClick }: { r: Report; active: boolean; onClick: () => void }) {
   return (
     <div
       onClick={onClick}
@@ -51,14 +43,13 @@ function QueueCard({
   );
 }
 
-const PLACEHOLDER = (n: number) =>
-  `https://placehold.co/200x150/f5f5f5/999?text=截图${n}`;
+const PLACEHOLDER = (n: number) => `https://placehold.co/200x150/f5f5f5/999?text=截图${n}`;
 
 export function ReportReviewPage() {
   const [queue, setQueue] = useState(PENDING_REPORTS);
   const [selected, setSelected] = useState<Report | null>(queue[0] ?? null);
   const handle = (r: Report) => {
-    const remaining = queue.filter((x) => x.orderNo !== r.orderNo);
+    const remaining = queue.filter(x => x.orderNo !== r.orderNo);
     setQueue(remaining);
     setSelected(remaining[0] ?? null);
   };
@@ -81,7 +72,7 @@ export function ReportReviewPage() {
                 暂无待审核报备 🎉
               </Text>
             ) : (
-              queue.map((r) => (
+              queue.map(r => (
                 <QueueCard
                   key={r.orderNo}
                   r={r}
@@ -108,18 +99,10 @@ export function ReportReviewPage() {
               }
               extra={
                 <Space>
-                  <Button
-                    type="primary"
-                    icon={<CheckOutlined />}
-                    onClick={() => handle(selected)}
-                  >
+                  <Button type="primary" icon={<CheckOutlined />} onClick={() => handle(selected)}>
                     通过
                   </Button>
-                  <Button
-                    danger
-                    icon={<CloseOutlined />}
-                    onClick={() => handle(selected)}
-                  >
+                  <Button danger icon={<CloseOutlined />} onClick={() => handle(selected)}>
                     驳回
                   </Button>
                 </Space>

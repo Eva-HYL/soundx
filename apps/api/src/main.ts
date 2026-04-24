@@ -37,12 +37,10 @@ async function bootstrap() {
   });
 
   await app.listen(env.port);
-  // eslint-disable-next-line no-console
   console.log(`[SoundX API] listening on :${env.port} (${env.nodeEnv})`);
 }
 
-bootstrap().catch((err) => {
-  // eslint-disable-next-line no-console
+bootstrap().catch(err => {
   console.error('[SoundX API] bootstrap failed', err);
   process.exit(1);
 });

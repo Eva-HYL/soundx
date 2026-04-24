@@ -1,12 +1,24 @@
 import { SearchOutlined } from '@ant-design/icons';
-import { Avatar, Card, Col, Input, Row, Space, Statistic, Switch, Table, Tag, Typography } from 'antd';
+import {
+  Avatar,
+  Card,
+  Col,
+  Input,
+  Row,
+  Space,
+  Statistic,
+  Switch,
+  Table,
+  Tag,
+  Typography,
+} from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { useState } from 'react';
 import { GAMES, PLAYERS } from '../../mock/data';
 import { PLAYER_WORK_STATUS } from '../../constants/status';
 
 const { Text } = Typography;
-const GAME_MAP = Object.fromEntries(GAMES.map((g) => [g.id, g]));
+const GAME_MAP = Object.fromEntries(GAMES.map(g => [g.id, g]));
 
 type Player = (typeof PLAYERS)[number];
 
@@ -14,11 +26,11 @@ export function PlayerManagePage() {
   const [keyword, setKeyword] = useState('');
 
   const filtered = PLAYERS.filter(
-    (p) => !keyword || p.name.includes(keyword) || p.wechat.includes(keyword),
+    p => !keyword || p.name.includes(keyword) || p.wechat.includes(keyword),
   );
 
-  const online = PLAYERS.filter((p) => ['online', 'in_service'].includes(p.status)).length;
-  const pending = PLAYERS.filter((p) => p.status === 'pending').length;
+  const online = PLAYERS.filter(p => ['online', 'in_service'].includes(p.status)).length;
+  const pending = PLAYERS.filter(p => p.status === 'pending').length;
 
   const columns: ColumnsType<Player> = [
     {
@@ -42,7 +54,7 @@ export function PlayerManagePage() {
       width: 160,
       render: (v: string[]) => (
         <Space size={4} wrap>
-          {v.map((g) => (
+          {v.map(g => (
             <Tag key={g} color={GAME_MAP[g]?.color} style={{ margin: 0, fontSize: 11 }}>
               {GAME_MAP[g]?.name}
             </Tag>
@@ -55,7 +67,7 @@ export function PlayerManagePage() {
       title: '状态',
       dataIndex: 'status',
       width: 80,
-      render: (v) => {
+      render: v => {
         const s = PLAYER_WORK_STATUS[v];
         return (
           <Space size={4}>
@@ -83,20 +95,20 @@ export function PlayerManagePage() {
       title: '评分',
       dataIndex: 'rating',
       width: 70,
-      render: (v) => (v > 0 ? <Text style={{ color: '#faad14' }}>★ {v}</Text> : '—'),
+      render: v => (v > 0 ? <Text style={{ color: '#faad14' }}>★ {v}</Text> : '—'),
     },
     {
       title: '累计流水',
       dataIndex: 'income',
       width: 100,
       sorter: (a, b) => a.income - b.income,
-      render: (v) => `¥${v.toLocaleString()}`,
+      render: v => `¥${v.toLocaleString()}`,
     },
     {
       title: '当前余额',
       dataIndex: 'balance',
       width: 90,
-      render: (v) => <Text style={{ color: '#1677ff' }}>¥{v}</Text>,
+      render: v => <Text style={{ color: '#1677ff' }}>¥{v}</Text>,
     },
     {
       title: '入驻日期',
@@ -124,7 +136,7 @@ export function PlayerManagePage() {
           { title: '在线 / 服务中', value: online, suffix: '人', color: '#52c41a' },
           { title: '待审核入驻', value: pending, suffix: '人', color: '#faad14' },
           { title: '本月新增', value: 2, suffix: '人', color: undefined },
-        ].map((s) => (
+        ].map(s => (
           <Col key={s.title} span={6}>
             <Card size="small">
               <Statistic
@@ -143,7 +155,7 @@ export function PlayerManagePage() {
           prefix={<SearchOutlined />}
           placeholder="搜索昵称 / 微信号"
           value={keyword}
-          onChange={(e) => setKeyword(e.target.value)}
+          onChange={e => setKeyword(e.target.value)}
           style={{ width: 240 }}
           allowClear
         />

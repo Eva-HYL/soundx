@@ -11,53 +11,115 @@ type ApprovedRow = (typeof WITHDRAWALS.approved_pending_transfer)[number];
 type AllRow = (typeof WITHDRAWALS.all)[number];
 
 const pendingCols: ColumnsType<PendingRow> = [
-  { title: '编号', dataIndex: 'id', width: 100, render: (v) => <Text style={{ fontFamily: 'monospace', fontSize: 12 }}>{v}</Text> },
+  {
+    title: '编号',
+    dataIndex: 'id',
+    width: 100,
+    render: v => <Text style={{ fontFamily: 'monospace', fontSize: 12 }}>{v}</Text>,
+  },
   { title: '陪玩', dataIndex: 'pal', width: 120 },
   { title: '姓名', dataIndex: 'name', width: 80 },
-  { title: '微信号', dataIndex: 'wechat', width: 130, render: (v) => <Text copyable style={{ fontSize: 12 }}>{v}</Text> },
-  { title: '申请金额', dataIndex: 'amount', width: 100, render: (v) => <Text strong style={{ color: '#1677ff' }}>¥{v}</Text> },
-  { title: '账户余额', dataIndex: 'balance', width: 100, render: (v) => <Text type="secondary">¥{v}</Text> },
+  {
+    title: '微信号',
+    dataIndex: 'wechat',
+    width: 130,
+    render: v => (
+      <Text copyable style={{ fontSize: 12 }}>
+        {v}
+      </Text>
+    ),
+  },
+  {
+    title: '申请金额',
+    dataIndex: 'amount',
+    width: 100,
+    render: v => (
+      <Text strong style={{ color: '#1677ff' }}>
+        ¥{v}
+      </Text>
+    ),
+  },
+  {
+    title: '账户余额',
+    dataIndex: 'balance',
+    width: 100,
+    render: v => <Text type="secondary">¥{v}</Text>,
+  },
   { title: '申请时间', dataIndex: 'submitted', width: 100 },
   {
     title: '操作',
     width: 160,
     render: () => (
       <Space size={4}>
-        <Button size="small" type="primary" icon={<CheckOutlined />}>审核通过</Button>
-        <Button size="small" danger icon={<CloseOutlined />}>驳回</Button>
+        <Button size="small" type="primary" icon={<CheckOutlined />}>
+          审核通过
+        </Button>
+        <Button size="small" danger icon={<CloseOutlined />}>
+          驳回
+        </Button>
       </Space>
     ),
   },
 ];
 
 const approvedCols: ColumnsType<ApprovedRow> = [
-  { title: '编号', dataIndex: 'id', width: 100, render: (v) => <Text style={{ fontFamily: 'monospace', fontSize: 12 }}>{v}</Text> },
+  {
+    title: '编号',
+    dataIndex: 'id',
+    width: 100,
+    render: v => <Text style={{ fontFamily: 'monospace', fontSize: 12 }}>{v}</Text>,
+  },
   { title: '陪玩', dataIndex: 'pal', width: 120 },
   { title: '姓名', dataIndex: 'name', width: 80 },
-  { title: '微信号', dataIndex: 'wechat', width: 130, render: (v) => <Text copyable style={{ fontSize: 12 }}>{v}</Text> },
-  { title: '转账金额', dataIndex: 'amount', width: 100, render: (v) => <Text strong style={{ color: '#52c41a' }}>¥{v}</Text> },
+  {
+    title: '微信号',
+    dataIndex: 'wechat',
+    width: 130,
+    render: v => (
+      <Text copyable style={{ fontSize: 12 }}>
+        {v}
+      </Text>
+    ),
+  },
+  {
+    title: '转账金额',
+    dataIndex: 'amount',
+    width: 100,
+    render: v => (
+      <Text strong style={{ color: '#52c41a' }}>
+        ¥{v}
+      </Text>
+    ),
+  },
   { title: '申请时间', dataIndex: 'submitted', width: 120 },
   {
     title: '操作',
     width: 140,
     render: () => (
-      <Button size="small" type="primary" icon={<DollarOutlined />}>确认已转账</Button>
+      <Button size="small" type="primary" icon={<DollarOutlined />}>
+        确认已转账
+      </Button>
     ),
   },
 ];
 
 const allCols: ColumnsType<AllRow> = [
-  { title: '编号', dataIndex: 'id', width: 100, render: (v) => <Text style={{ fontFamily: 'monospace', fontSize: 12 }}>{v}</Text> },
+  {
+    title: '编号',
+    dataIndex: 'id',
+    width: 100,
+    render: v => <Text style={{ fontFamily: 'monospace', fontSize: 12 }}>{v}</Text>,
+  },
   { title: '陪玩', dataIndex: 'pal', width: 120 },
   { title: '姓名', dataIndex: 'name', width: 80 },
   { title: '微信号', dataIndex: 'wechat', width: 130 },
-  { title: '金额', dataIndex: 'amount', width: 90, render: (v) => `¥${v}` },
+  { title: '金额', dataIndex: 'amount', width: 90, render: v => `¥${v}` },
   { title: '申请时间', dataIndex: 'submitted', width: 100 },
   {
     title: '状态',
     dataIndex: 'status',
     width: 90,
-    render: (v) => {
+    render: v => {
       const s = WITHDRAW_STATUS[v];
       return <Tag color={s?.color}>{s?.text}</Tag>;
     },
@@ -79,7 +141,9 @@ export function WithdrawsPage() {
               suffix="笔"
               valueStyle={{ color: '#faad14' }}
             />
-            <Text type="secondary" style={{ fontSize: 12 }}>合计 ¥{totalPending}</Text>
+            <Text type="secondary" style={{ fontSize: 12 }}>
+              合计 ¥{totalPending}
+            </Text>
           </Card>
         </Col>
         <Col span={8}>
@@ -90,13 +154,17 @@ export function WithdrawsPage() {
               suffix="笔"
               valueStyle={{ color: '#1677ff' }}
             />
-            <Text type="secondary" style={{ fontSize: 12 }}>合计 ¥{totalApproved}</Text>
+            <Text type="secondary" style={{ fontSize: 12 }}>
+              合计 ¥{totalApproved}
+            </Text>
           </Card>
         </Col>
         <Col span={8}>
           <Card size="small">
             <Statistic title="本月已完成" value={28} suffix="笔" />
-            <Text type="secondary" style={{ fontSize: 12 }}>合计 ¥12,480</Text>
+            <Text type="secondary" style={{ fontSize: 12 }}>
+              合计 ¥12,480
+            </Text>
           </Card>
         </Col>
       </Row>

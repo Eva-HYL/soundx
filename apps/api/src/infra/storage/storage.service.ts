@@ -1,11 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { v4 as uuidv4 } from 'uuid';
 import { UPLOAD_CONSTRAINTS } from '@soundx/shared-types';
-import type {
-  FileRef,
-  UploadBizType,
-  UploadMethod,
-} from '@soundx/shared-types';
+import type { FileRef, UploadBizType, UploadMethod } from '@soundx/shared-types';
 import { EnvService } from '@/config/env.service';
 import { BusinessException } from '@/common/errors/business.exception';
 import { ErrorCode } from '@soundx/shared-types';
@@ -78,7 +74,7 @@ export class StorageService {
   }
 
   async resolveFileRefs(fileKeys: string[]): Promise<FileRef[]> {
-    return Promise.all(fileKeys.map((k) => this.resolveFileRef(k)));
+    return Promise.all(fileKeys.map(k => this.resolveFileRef(k)));
   }
 
   private signLocal(args: {

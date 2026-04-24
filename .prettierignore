@@ -1,0 +1,30 @@
+# Build outputs
+dist/
+build/
+.next/
+
+# Dependencies
+node_modules/
+
+# Turbo cache
+.turbo/
+
+# Generated files
+pnpm-lock.yaml
+*.lock
+
+# Taro generated
+apps/miniapp/dist/
+apps/miniapp/project.private.config.json
+
+# Binary / non-code assets
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.svg
+*.ico
+*.woff
+*.woff2
+*.ttf
+*.eot

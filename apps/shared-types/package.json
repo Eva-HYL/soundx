@@ -1,0 +1,21 @@
+{
+  "name": "@soundx/shared-types",
+  "version": "0.0.0",
+  "private": true,
+  "description": "SoundX 前后端共享类型、枚举、错误码、常量",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsc -p tsconfig.json --watch",
+    "clean": "rm -rf dist .turbo",
+    "type-check": "tsc -p tsconfig.json --noEmit",
+    "lint": "eslint src/",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
+  },
+  "devDependencies": {
+    "typescript": "^5.6.0"
+  }
+}

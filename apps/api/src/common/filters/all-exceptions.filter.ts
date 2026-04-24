@@ -81,9 +81,7 @@ function mapHttpToApiError(
     typeof resp === 'string'
       ? resp
       : ((resp as { message?: string | string[] })?.message ?? 'error');
-  const message = Array.isArray(defaultMessage)
-    ? defaultMessage[0] ?? 'error'
-    : defaultMessage;
+  const message = Array.isArray(defaultMessage) ? (defaultMessage[0] ?? 'error') : defaultMessage;
 
   switch (status) {
     case HttpStatus.BAD_REQUEST:

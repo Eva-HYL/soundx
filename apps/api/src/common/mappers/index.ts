@@ -5,10 +5,7 @@ export const bigintToString = (v: bigint | null | undefined): string | null =>
   v === null || v === undefined ? null : v.toString();
 
 /** Decimal → 两位小数字符串（金额默认）。scale 由列定义决定。 */
-export const decimalToString = (
-  v: Decimal | null | undefined,
-  scale = 2,
-): string | null =>
+export const decimalToString = (v: Decimal | null | undefined, scale = 2): string | null =>
   v === null || v === undefined ? null : v.toFixed(scale);
 
 /** UPPER_SNAKE 枚举值 → lower_snake 字面量。 */

@@ -1,9 +1,4 @@
-import {
-  Injectable,
-  Logger,
-  OnModuleDestroy,
-  OnModuleInit,
-} from '@nestjs/common';
+import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import Redis from 'ioredis';
 import { EnvService } from '@/config/env.service';
 
@@ -35,18 +30,9 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
    * Redis 分布式锁（简化版，够用于抢单场景）。
    * 成功返回 token，失败返回 null。释放时比对 token 避免误释放。
    */
-  async acquireLock(
-    key: string,
-    ttlMs: number,
-  ): Promise<string | null> {
+  async acquireLock(key: string, ttlMs: number): Promise<string | null> {
     const token = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-    const ok = await this.client.set(
-      `lock:${key}`,
-      token,
-      'PX',
-      ttlMs,
-      'NX',
-    );
+    const ok = await this.client.set(`lock:${key}`, token, 'PX', ttlMs, 'NX');
     return ok === 'OK' ? token : null;
   }
 

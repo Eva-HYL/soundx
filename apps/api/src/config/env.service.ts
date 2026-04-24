@@ -65,7 +65,7 @@ export class EnvService {
     return this.config
       .get('CORS_ORIGINS', { infer: true })
       .split(',')
-      .map((s) => s.trim())
+      .map(s => s.trim())
       .filter(Boolean);
   }
 }

@@ -21,7 +21,16 @@ export function LoginPage() {
       }}
     >
       {/* Logo */}
-      <div style={{ position: 'absolute', top: 32, left: 40, display: 'flex', alignItems: 'center', gap: 10 }}>
+      <div
+        style={{
+          position: 'absolute',
+          top: 32,
+          left: 40,
+          display: 'flex',
+          alignItems: 'center',
+          gap: 10,
+        }}
+      >
         <div
           style={{
             width: 36,
@@ -66,16 +75,24 @@ export function LoginPage() {
           onFinish={() => navigate('/')}
           initialValues={{ username: 'zhou@xingchen-esports', remember: true }}
         >
-          <Form.Item label="账号" name="username" rules={[{ required: true, message: '请输入账号' }]}>
+          <Form.Item
+            label="账号"
+            name="username"
+            rules={[{ required: true, message: '请输入账号' }]}
+          >
             <Input prefix={<UserOutlined />} placeholder="账号 / 邮箱" size="large" />
           </Form.Item>
 
-          <Form.Item label="密码" name="password" rules={[{ required: true, message: '请输入密码' }]}>
+          <Form.Item
+            label="密码"
+            name="password"
+            rules={[{ required: true, message: '请输入密码' }]}
+          >
             <Input.Password
               prefix={<LockOutlined />}
               placeholder="密码"
               size="large"
-              iconRender={(visible) => (visible ? <EyeOutlined /> : <EyeInvisibleOutlined />)}
+              iconRender={visible => (visible ? <EyeOutlined /> : <EyeInvisibleOutlined />)}
             />
           </Form.Item>
 

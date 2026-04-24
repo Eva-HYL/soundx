@@ -6,7 +6,7 @@ import { GAMES, ORDER_LIST } from '../../mock/data';
 import { ORDER_STATUS } from '../../constants/status';
 
 const { Text } = Typography;
-const GAME_MAP = Object.fromEntries(GAMES.map((g) => [g.id, g]));
+const GAME_MAP = Object.fromEntries(GAMES.map(g => [g.id, g]));
 
 const STATUS_TABS = [
   { key: 'all', label: '全部' },
@@ -25,7 +25,11 @@ const columns: ColumnsType<Order> = [
     title: '订单号',
     dataIndex: 'no',
     width: 140,
-    render: (v) => <Text copyable style={{ fontSize: 12, fontFamily: 'monospace' }}>{v}</Text>,
+    render: v => (
+      <Text copyable style={{ fontSize: 12, fontFamily: 'monospace' }}>
+        {v}
+      </Text>
+    ),
   },
   { title: '用户', dataIndex: 'user', width: 120 },
   { title: '陪玩', dataIndex: 'pal', width: 120 },
@@ -33,9 +37,13 @@ const columns: ColumnsType<Order> = [
     title: '游戏',
     dataIndex: 'game',
     width: 100,
-    render: (v) => {
+    render: v => {
       const g = GAME_MAP[v];
-      return <Tag color={g?.color} style={{ margin: 0 }}>{g?.name}</Tag>;
+      return (
+        <Tag color={g?.color} style={{ margin: 0 }}>
+          {g?.name}
+        </Tag>
+      );
     },
   },
   { title: '服务', dataIndex: 'svc', width: 120 },
@@ -43,19 +51,19 @@ const columns: ColumnsType<Order> = [
     title: '时长',
     dataIndex: 'dur',
     width: 70,
-    render: (v) => `${v}h`,
+    render: v => `${v}h`,
   },
   {
     title: '金额',
     dataIndex: 'total',
     width: 80,
-    render: (v) => <Text strong>¥{v}</Text>,
+    render: v => <Text strong>¥{v}</Text>,
   },
   {
     title: '状态',
     dataIndex: 'status',
     width: 90,
-    render: (v) => {
+    render: v => {
       const s = ORDER_STATUS[v];
       return <Tag color={s?.color}>{s?.text}</Tag>;
     },
@@ -69,7 +77,7 @@ export function OrderListPage() {
   const [gameFilter, setGameFilter] = useState('all');
 
   const filtered = ORDER_LIST.filter(
-    (r) =>
+    r =>
       (activeTab === 'all' || r.status === activeTab) &&
       (gameFilter === 'all' || r.game === gameFilter) &&
       (!keyword || r.no.includes(keyword) || r.user.includes(keyword) || r.pal.includes(keyword)),
@@ -82,7 +90,7 @@ export function OrderListPage() {
           prefix={<SearchOutlined />}
           placeholder="搜索订单号 / 用户 / 陪玩"
           value={keyword}
-          onChange={(e) => setKeyword(e.target.value)}
+          onChange={e => setKeyword(e.target.value)}
           style={{ width: 240 }}
           allowClear
         />
@@ -90,14 +98,17 @@ export function OrderListPage() {
           value={gameFilter}
           onChange={setGameFilter}
           style={{ width: 130 }}
-          options={[{ value: 'all', label: '全部游戏' }, ...GAMES.map((g) => ({ value: g.id, label: g.name }))]}
+          options={[
+            { value: 'all', label: '全部游戏' },
+            ...GAMES.map(g => ({ value: g.id, label: g.name })),
+          ]}
         />
       </Space>
 
       <Tabs
         activeKey={activeTab}
         onChange={setActiveTab}
-        items={STATUS_TABS.map((t) => ({
+        items={STATUS_TABS.map(t => ({
           key: t.key,
           label: t.label,
         }))}

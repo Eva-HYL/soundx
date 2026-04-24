@@ -69,9 +69,13 @@ export function AdminLayout() {
   const { token } = theme.useToken();
 
   const selectedKey = location.pathname;
-  const openKeys = (MENU_ITEMS ?? []).flatMap((item: any) =>
-    item?.children?.some((c: any) => c.key === selectedKey) ? [item.key as string] : [],
-  );
+  const openKeys = (MENU_ITEMS ?? []).flatMap(item => {
+    if (!item || typeof item !== 'object' || !('key' in item)) return [];
+    const children = (item as { children?: { key?: React.Key }[] }).children;
+    if (!children) return [];
+    const hit = children.some(c => c?.key === selectedKey);
+    return hit && item.key != null ? [String(item.key)] : [];
+  });
 
   return (
     <Layout style={{ minHeight: '100vh' }}>
@@ -83,7 +87,9 @@ export function AdminLayout() {
         theme="dark"
         width={208}
       >
-        <div style={{ height: 64, display: 'flex', alignItems: 'center', padding: '0 20px', gap: 10 }}>
+        <div
+          style={{ height: 64, display: 'flex', alignItems: 'center', padding: '0 20px', gap: 10 }}
+        >
           <div
             style={{
               width: 32,
@@ -135,7 +141,15 @@ export function AdminLayout() {
             type="text"
             style={{ marginRight: 16, display: 'flex', alignItems: 'center', gap: 6 }}
           >
-            <span style={{ width: 8, height: 8, borderRadius: 4, background: '#52c41a', display: 'inline-block' }} />
+            <span
+              style={{
+                width: 8,
+                height: 8,
+                borderRadius: 4,
+                background: '#52c41a',
+                display: 'inline-block',
+              }}
+            />
             星辰电竞俱乐部
             <span style={{ fontSize: 10, color: '#8c8c8c' }}>▾</span>
           </Button>

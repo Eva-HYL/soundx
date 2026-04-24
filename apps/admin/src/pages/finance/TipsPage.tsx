@@ -12,7 +12,7 @@ const columns: ColumnsType<Tip> = [
     title: '编号',
     dataIndex: 'id',
     width: 110,
-    render: (v) => <Text style={{ fontSize: 12, fontFamily: 'monospace' }}>{v}</Text>,
+    render: v => <Text style={{ fontSize: 12, fontFamily: 'monospace' }}>{v}</Text>,
   },
   { title: '用户', dataIndex: 'user', width: 120 },
   { title: '陪玩', dataIndex: 'pal', width: 120 },
@@ -20,18 +20,22 @@ const columns: ColumnsType<Tip> = [
     title: '关联订单',
     dataIndex: 'order',
     width: 140,
-    render: (v) => <Text style={{ fontSize: 12, fontFamily: 'monospace' }}>{v}</Text>,
+    render: v => <Text style={{ fontSize: 12, fontFamily: 'monospace' }}>{v}</Text>,
   },
   {
     title: '金额',
     dataIndex: 'amount',
     width: 80,
-    render: (v) => <Text strong style={{ color: '#52c41a' }}>¥{v}</Text>,
+    render: v => (
+      <Text strong style={{ color: '#52c41a' }}>
+        ¥{v}
+      </Text>
+    ),
   },
   {
     title: '留言',
     dataIndex: 'msg',
-    render: (v) =>
+    render: v =>
       v ? (
         <Text
           style={{
@@ -45,14 +49,16 @@ const columns: ColumnsType<Tip> = [
           「{v}」
         </Text>
       ) : (
-        <Text type="secondary" style={{ fontSize: 12 }}>—</Text>
+        <Text type="secondary" style={{ fontSize: 12 }}>
+          —
+        </Text>
       ),
   },
   {
     title: '状态',
     dataIndex: 'status',
     width: 90,
-    render: (v) => {
+    render: v => {
       const s = TIP_STATUS[v];
       return <Tag color={s?.color}>{s?.text}</Tag>;
     },
@@ -62,8 +68,8 @@ const columns: ColumnsType<Tip> = [
 
 export function TipsPage() {
   const total = TIPS.reduce((s, r) => s + r.amount, 0);
-  const received = TIPS.filter((r) => r.status === 'received').reduce((s, r) => s + r.amount, 0);
-  const withMsg = TIPS.filter((r) => r.msg).length;
+  const received = TIPS.filter(r => r.status === 'received').reduce((s, r) => s + r.amount, 0);
+  const withMsg = TIPS.filter(r => r.msg).length;
 
   return (
     <div style={{ padding: 24 }}>
@@ -90,13 +96,7 @@ export function TipsPage() {
         </Col>
       </Row>
 
-      <Table
-        dataSource={TIPS}
-        columns={columns}
-        rowKey="id"
-        size="small"
-        pagination={false}
-      />
+      <Table dataSource={TIPS} columns={columns} rowKey="id" size="small" pagination={false} />
     </div>
   );
 }

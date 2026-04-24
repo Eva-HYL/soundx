@@ -19,15 +19,11 @@ import { EnvService } from '@/config/env.service';
                   ignore: 'pid,hostname,req.headers,res.headers',
                 },
               },
-          customProps: (req) => ({
+          customProps: req => ({
             requestId: (req as { requestId?: string }).requestId,
           }),
           redact: {
-            paths: [
-              'req.headers.authorization',
-              'req.headers.cookie',
-              'res.headers["set-cookie"]',
-            ],
+            paths: ['req.headers.authorization', 'req.headers.cookie', 'res.headers["set-cookie"]'],
             remove: true,
           },
         },

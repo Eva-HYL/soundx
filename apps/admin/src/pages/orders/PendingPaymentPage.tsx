@@ -1,35 +1,173 @@
 import { CheckOutlined, CloseOutlined, EyeOutlined, PictureOutlined } from '@ant-design/icons';
-import { Badge, Button, Drawer, Image, Select, Space, Table, Tag, Tooltip, Typography } from 'antd';
+import {
+  Badge,
+  Button,
+  Drawer,
+  Image,
+  Input,
+  Select,
+  Space,
+  Table,
+  Tag,
+  Tooltip,
+  Typography,
+} from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { useCallback, useEffect, useState } from 'react';
 import { GAMES, PENDING_PAYMENTS } from '../../mock/data';
 
 const { Text, Title } = Typography;
 
-type Order = (typeof PENDING_PAYMENTS)[number];
-
-const GAME_MAP = Object.fromEntries(GAMES.map((g) => [g.id, g]));
+const GAME_MAP = Object.fromEntries(GAMES.map(g => [g.id, g]));
 
 const VOUCHER_PLACEHOLDER = 'https://placehold.co/480x320/f5f5f5/999?text=付款凭证';
 
-function SplitPreview({ amount, ratio = 70 }: { amount: number; ratio?: number }) {
-  const pal = ((amount * ratio) / 100).toFixed(2);
-  const club = ((amount * (100 - ratio)) / 100).toFixed(2);
+const DEFAULT_RATE = 70;
+const PAL_OVERRIDES: Record<string, number> = {
+  AhriQueen: 72,
+  带飞专业户: 75,
+  打野在哪: 68,
+};
+
+function getRate(pal: string | null): number {
+  if (!pal) return DEFAULT_RATE;
+  return PAL_OVERRIDES[pal] ?? DEFAULT_RATE;
+}
+
+type Order = (typeof PENDING_PAYMENTS)[number] & { rate: number };
+
+const ORDERS: Order[] = PENDING_PAYMENTS.map(o => ({ ...o, rate: getRate(o.pal) }));
+
+function SplitPreview({
+  amount,
+  rate,
+  palName,
+  isOverride,
+}: {
+  amount: number;
+  rate: number;
+  palName: string;
+  isOverride: boolean;
+}) {
+  const palAmount = ((amount * rate) / 100).toFixed(2);
+  const clubAmount = ((amount * (100 - rate)) / 100).toFixed(2);
+  const clubRate = 100 - rate;
+
   return (
-    <div style={{ background: '#fafafa', border: '1px solid #f0f0f0', borderRadius: 6, padding: '10px 14px' }}>
-      <div style={{ fontSize: 12, color: '#8c8c8c', marginBottom: 6 }}>结算预览（默认比例 {ratio}%）</div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}>
-        <span>陪玩分成</span>
-        <Text style={{ color: '#1677ff' }}>¥{pal}</Text>
+    <div
+      style={{
+        background: '#f7fbff',
+        border: '1px solid #e6f4ff',
+        borderRadius: 8,
+        padding: 16,
+      }}
+    >
+      <Text style={{ fontSize: 13, fontWeight: 600, display: 'block', marginBottom: 12 }}>
+        分账预览
+      </Text>
+
+      <div
+        style={{
+          display: 'flex',
+          height: 40,
+          borderRadius: 6,
+          overflow: 'hidden',
+          marginBottom: 12,
+        }}
+      >
+        <div
+          style={{
+            width: `${rate}%`,
+            background: '#1677ff',
+            color: '#fff',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            fontSize: 13,
+            fontWeight: 500,
+          }}
+        >
+          陪玩 {rate}%
+        </div>
+        <div
+          style={{
+            width: `${clubRate}%`,
+            background: '#bae0ff',
+            color: '#1677ff',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            fontSize: 13,
+            fontWeight: 500,
+          }}
+        >
+          俱乐部 {clubRate}%
+        </div>
       </div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, marginTop: 4 }}>
-        <span>俱乐部抽成</span>
-        <Text type="secondary">¥{club}</Text>
+
+      <div style={{ display: 'flex', gap: 10 }}>
+        <div
+          style={{
+            flex: 1,
+            background: '#fff',
+            border: '1px solid #e6f4ff',
+            borderRadius: 6,
+            padding: 12,
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+            <span
+              style={{
+                width: 8,
+                height: 8,
+                borderRadius: 4,
+                background: '#1677ff',
+                display: 'inline-block',
+              }}
+            />
+            <Text style={{ fontSize: 12, color: '#595959' }}>陪玩 · {palName}</Text>
+          </div>
+          <div style={{ fontSize: 20, fontWeight: 700, color: '#1677ff' }}>¥ {palAmount}</div>
+          <div style={{ fontSize: 11, color: '#8c8c8c', marginTop: 2 }}>
+            {amount.toFixed(2)} × {rate}% = {palAmount}
+            {isOverride && <span style={{ color: '#d4a24a', marginLeft: 6 }}>· 单独覆盖</span>}
+          </div>
+        </div>
+
+        <div
+          style={{
+            flex: 1,
+            background: '#fff',
+            border: '1px solid #e6f4ff',
+            borderRadius: 6,
+            padding: 12,
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+            <span
+              style={{
+                width: 8,
+                height: 8,
+                borderRadius: 4,
+                background: '#bae0ff',
+                display: 'inline-block',
+              }}
+            />
+            <Text style={{ fontSize: 12, color: '#595959' }}>俱乐部留存</Text>
+          </div>
+          <div style={{ fontSize: 20, fontWeight: 700, color: '#262626' }}>¥ {clubAmount}</div>
+          <div style={{ fontSize: 11, color: '#8c8c8c', marginTop: 2 }}>
+            {amount.toFixed(2)} × {clubRate}% = {clubAmount}
+          </div>
+        </div>
       </div>
-      <div style={{ borderTop: '1px solid #f0f0f0', marginTop: 8, paddingTop: 8, display: 'flex', justifyContent: 'space-between', fontSize: 13 }}>
-        <span>订单金额</span>
-        <Text strong>¥{amount.toFixed(2)}</Text>
-      </div>
+
+      {isOverride && (
+        <div style={{ marginTop: 10, fontSize: 12, color: '#1677ff' }}>
+          ⓘ {palName} 单独配置 {rate}%, {rate > DEFAULT_RATE ? '高于' : '低于'} 默认 {DEFAULT_RATE}
+          %。确认后陪玩侧账单同步按 {rate}% 入账。
+        </div>
+      )}
     </div>
   );
 }
@@ -40,16 +178,22 @@ export function PendingPaymentPage() {
   const [drawerOrder, setDrawerOrder] = useState<Order | null>(null);
   const [confirmed, setConfirmed] = useState<Set<string>>(new Set());
   const [rejected, setRejected] = useState<Set<string>>(new Set());
+  const [amount, setAmount] = useState<number>(0);
 
-  const data = PENDING_PAYMENTS.filter(
-    (r) =>
+  const data = ORDERS.filter(
+    r =>
       (gameFilter === 'all' || r.game === gameFilter) &&
       (typeFilter === 'all' || r.type === typeFilter),
   );
 
+  const openDrawer = (order: Order) => {
+    setAmount(order.amount);
+    setDrawerOrder(order);
+  };
+
   const handleConfirm = useCallback(
     (orderNo: string) => {
-      setConfirmed((p) => new Set(p).add(orderNo));
+      setConfirmed(p => new Set(p).add(orderNo));
       if (drawerOrder?.orderNo === orderNo) setDrawerOrder(null);
     },
     [drawerOrder],
@@ -57,7 +201,7 @@ export function PendingPaymentPage() {
 
   const handleReject = useCallback(
     (orderNo: string) => {
-      setRejected((p) => new Set(p).add(orderNo));
+      setRejected(p => new Set(p).add(orderNo));
       if (drawerOrder?.orderNo === orderNo) setDrawerOrder(null);
     },
     [drawerOrder],
@@ -79,14 +223,18 @@ export function PendingPaymentPage() {
       title: '订单号',
       dataIndex: 'orderNo',
       width: 140,
-      render: (v) => <Text copyable style={{ fontSize: 12, fontFamily: 'monospace' }}>{v}</Text>,
+      render: v => (
+        <Text copyable style={{ fontSize: 12, fontFamily: 'monospace' }}>
+          {v}
+        </Text>
+      ),
     },
     { title: '用户', dataIndex: 'user', width: 120 },
     {
       title: '陪玩',
       dataIndex: 'pal',
       width: 120,
-      render: (v) => v ? <Text>{v}</Text> : <Tag color="gold">待派发</Tag>,
+      render: v => (v ? <Text>{v}</Text> : <Tag color="gold">待派发</Tag>),
     },
     {
       title: '游戏 / 服务',
@@ -95,8 +243,12 @@ export function PendingPaymentPage() {
         const g = GAME_MAP[r.game];
         return (
           <Space size={4} direction="vertical" style={{ lineHeight: 1.4 }}>
-            <Tag color={g?.color} style={{ margin: 0, fontSize: 11 }}>{g?.name}</Tag>
-            <Text style={{ fontSize: 12 }}>{r.service} · {r.duration}h</Text>
+            <Tag color={g?.color} style={{ margin: 0, fontSize: 11 }}>
+              {g?.name}
+            </Tag>
+            <Text style={{ fontSize: 12 }}>
+              {r.service} · {r.duration}h
+            </Text>
           </Space>
         );
       },
@@ -105,13 +257,19 @@ export function PendingPaymentPage() {
       title: '金额',
       dataIndex: 'amount',
       width: 90,
-      render: (v) => <Text strong style={{ color: '#52c41a' }}>¥{v}</Text>,
+      render: v => (
+        <Text strong style={{ color: '#52c41a' }}>
+          ¥{v}
+        </Text>
+      ),
     },
     {
       title: '类型',
       dataIndex: 'type',
       width: 80,
-      render: (v) => <Tag color={v === 'assign' ? 'blue' : 'default'}>{v === 'assign' ? '指定' : '随机'}</Tag>,
+      render: v => (
+        <Tag color={v === 'assign' ? 'blue' : 'default'}>{v === 'assign' ? '指定' : '随机'}</Tag>
+      ),
     },
     {
       title: '凭证',
@@ -126,9 +284,13 @@ export function PendingPaymentPage() {
       title: '等待',
       dataIndex: 'ago',
       width: 100,
-      render: (v) => {
+      render: v => {
         const mins = parseInt(v);
-        return <Text type={mins > 20 ? 'danger' : 'secondary'} style={{ fontSize: 12 }}>{v}</Text>;
+        return (
+          <Text type={mins > 20 ? 'danger' : 'secondary'} style={{ fontSize: 12 }}>
+            {v}
+          </Text>
+        );
       },
     },
     {
@@ -155,14 +317,17 @@ export function PendingPaymentPage() {
             >
               拒绝
             </Button>
-            <Button size="small" icon={<EyeOutlined />} onClick={() => setDrawerOrder(r)} />
+            <Button size="small" icon={<EyeOutlined />} onClick={() => openDrawer(r)} />
           </Space>
         );
       },
     },
   ];
 
-  const pending = data.filter((r) => !confirmed.has(r.orderNo) && !rejected.has(r.orderNo));
+  const pending = data.filter(r => !confirmed.has(r.orderNo) && !rejected.has(r.orderNo));
+
+  const palName = drawerOrder?.pal ?? '待派发';
+  const isOverride = !!drawerOrder?.pal && drawerOrder.pal in PAL_OVERRIDES;
 
   return (
     <div style={{ padding: 24 }}>
@@ -176,7 +341,10 @@ export function PendingPaymentPage() {
           value={gameFilter}
           onChange={setGameFilter}
           style={{ width: 120 }}
-          options={[{ value: 'all', label: '全部游戏' }, ...GAMES.map((g) => ({ value: g.id, label: g.name }))]}
+          options={[
+            { value: 'all', label: '全部游戏' },
+            ...GAMES.map(g => ({ value: g.id, label: g.name })),
+          ]}
         />
         <Select
           value={typeFilter}
@@ -196,10 +364,10 @@ export function PendingPaymentPage() {
         rowKey="orderNo"
         size="small"
         pagination={false}
-        rowClassName={(r) =>
+        rowClassName={r =>
           confirmed.has(r.orderNo) || rejected.has(r.orderNo) ? 'ant-table-row-disabled' : ''
         }
-        onRow={(r) => ({
+        onRow={r => ({
           style: { opacity: confirmed.has(r.orderNo) || rejected.has(r.orderNo) ? 0.4 : 1 },
         })}
         scroll={{ x: 900 }}
@@ -208,7 +376,7 @@ export function PendingPaymentPage() {
       <Drawer
         open={!!drawerOrder}
         onClose={() => setDrawerOrder(null)}
-        width={720}
+        width={780}
         title={
           <span>
             确认付款凭证
@@ -218,14 +386,16 @@ export function PendingPaymentPage() {
           </span>
         }
         footer={
-          drawerOrder && !confirmed.has(drawerOrder.orderNo) && !rejected.has(drawerOrder.orderNo) ? (
+          drawerOrder &&
+          !confirmed.has(drawerOrder.orderNo) &&
+          !rejected.has(drawerOrder.orderNo) ? (
             <Space>
               <Button
                 type="primary"
                 icon={<CheckOutlined />}
                 onClick={() => handleConfirm(drawerOrder.orderNo)}
               >
-                确认到账 (Y)
+                确认付款 · 自动派发给 {palName}
               </Button>
               <Button
                 danger
@@ -239,8 +409,8 @@ export function PendingPaymentPage() {
         }
       >
         {drawerOrder && (
-          <div style={{ display: 'flex', gap: 24, height: '100%' }}>
-            <div style={{ flex: 1 }}>
+          <div style={{ display: 'flex', gap: 24 }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
               <Image
                 src={VOUCHER_PLACEHOLDER}
                 alt="付款凭证"
@@ -248,28 +418,66 @@ export function PendingPaymentPage() {
                 preview={{ mask: '点击预览' }}
               />
             </div>
-            <div style={{ width: 240, flexShrink: 0 }}>
-              <div style={{ marginBottom: 16 }}>
-                <Text type="secondary" style={{ fontSize: 12 }}>订单号</Text>
-                <div style={{ fontFamily: 'monospace', fontSize: 13, marginTop: 2 }}>{drawerOrder.orderNo}</div>
-              </div>
-              <div style={{ marginBottom: 16 }}>
-                <Text type="secondary" style={{ fontSize: 12 }}>用户 / 陪玩</Text>
-                <div style={{ fontSize: 13, marginTop: 2 }}>{drawerOrder.user} → {drawerOrder.pal ?? '待派发'}</div>
-              </div>
-              <div style={{ marginBottom: 16 }}>
-                <Text type="secondary" style={{ fontSize: 12 }}>服务</Text>
-                <div style={{ fontSize: 13, marginTop: 2 }}>
-                  {GAME_MAP[drawerOrder.game]?.name} · {drawerOrder.service} · {drawerOrder.duration}h
+            <div style={{ width: 340, flexShrink: 0 }}>
+              <div style={{ marginBottom: 14 }}>
+                <Text type="secondary" style={{ fontSize: 12 }}>
+                  订单号
+                </Text>
+                <div style={{ fontFamily: 'monospace', fontSize: 13, marginTop: 2 }}>
+                  {drawerOrder.orderNo}
                 </div>
               </div>
-              <div style={{ marginBottom: 16 }}>
-                <Text type="secondary" style={{ fontSize: 12 }}>应付金额</Text>
+              <div style={{ marginBottom: 14 }}>
+                <Text type="secondary" style={{ fontSize: 12 }}>
+                  用户 / 陪玩
+                </Text>
+                <div style={{ fontSize: 13, marginTop: 2 }}>
+                  {drawerOrder.user} → {drawerOrder.pal ?? '待派发'}
+                </div>
+              </div>
+              <div style={{ marginBottom: 14 }}>
+                <Text type="secondary" style={{ fontSize: 12 }}>
+                  服务
+                </Text>
+                <div style={{ fontSize: 13, marginTop: 2 }}>
+                  {GAME_MAP[drawerOrder.game]?.name} · {drawerOrder.service} ·{' '}
+                  {drawerOrder.duration}h
+                </div>
+              </div>
+              <div style={{ marginBottom: 14 }}>
+                <Text type="secondary" style={{ fontSize: 12 }}>
+                  应付金额
+                </Text>
                 <div style={{ fontSize: 20, fontWeight: 600, color: '#52c41a', marginTop: 2 }}>
                   ¥{drawerOrder.amount}
                 </div>
               </div>
-              <SplitPreview amount={drawerOrder.amount} />
+
+              <div style={{ marginBottom: 14 }}>
+                <Text type="secondary" style={{ fontSize: 12 }}>
+                  实际到账金额
+                </Text>
+                <Input
+                  prefix="¥"
+                  value={amount}
+                  onChange={e => {
+                    const v = Number(e.target.value);
+                    if (!Number.isNaN(v)) setAmount(v);
+                  }}
+                  style={{ marginTop: 4 }}
+                />
+                <Text type="secondary" style={{ fontSize: 11, marginTop: 4, display: 'block' }}>
+                  如凭证金额与应付金额不一致, 请按凭证填入, 分账自动按实际到账重算
+                </Text>
+              </div>
+
+              <SplitPreview
+                amount={amount}
+                rate={drawerOrder.rate}
+                palName={palName}
+                isOverride={isOverride}
+              />
+
               <div style={{ marginTop: 12, fontSize: 12, color: '#8c8c8c' }}>
                 提交于 {drawerOrder.ago}
               </div>

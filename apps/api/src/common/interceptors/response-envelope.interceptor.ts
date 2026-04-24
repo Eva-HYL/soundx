@@ -1,9 +1,4 @@
-import {
-  CallHandler,
-  ExecutionContext,
-  Injectable,
-  NestInterceptor,
-} from '@nestjs/common';
+import { CallHandler, ExecutionContext, Injectable, NestInterceptor } from '@nestjs/common';
 import { map, Observable } from 'rxjs';
 import { ErrorCode } from '@soundx/shared-types';
 import type { ApiResponse } from '@soundx/shared-types';
@@ -17,15 +12,10 @@ import type { ApiResponse } from '@soundx/shared-types';
  *   - 返回 null/undefined（也会被包一层 data: null）
  */
 @Injectable()
-export class ResponseEnvelopeInterceptor<T>
-  implements NestInterceptor<T, ApiResponse<T> | T>
-{
-  intercept(
-    _context: ExecutionContext,
-    next: CallHandler<T>,
-  ): Observable<ApiResponse<T> | T> {
+export class ResponseEnvelopeInterceptor<T> implements NestInterceptor<T, ApiResponse<T> | T> {
+  intercept(_context: ExecutionContext, next: CallHandler<T>): Observable<ApiResponse<T> | T> {
     return next.handle().pipe(
-      map((data) => {
+      map(data => {
         if (isAlreadyEnvelope(data)) return data;
         return {
           code: ErrorCode.SUCCESS,

@@ -1,0 +1,10 @@
+page {
+  background-color: #F5F5F5;
+  font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Helvetica Neue', Helvetica, Arial, sans-serif;
+  color: #333333;
+}
+
+/* * selector is not supported in WXSS — enumerate elements instead */
+page, view, text, image, input, textarea, button, scroll-view, swiper, swiper-item {
+  box-sizing: border-box;
+}
