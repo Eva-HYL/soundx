@@ -1,11 +1,42 @@
 import { EyeInvisibleOutlined, EyeOutlined, LockOutlined, UserOutlined } from '@ant-design/icons';
-import { Button, Checkbox, Form, Input, Typography } from 'antd';
+import { Alert, Button, Checkbox, Form, Input, Typography, message } from 'antd';
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { ApiError, devLogin } from '../../services';
 
 const { Title, Text, Link } = Typography;
 
+interface LoginFormValues {
+  username: string;
+  password: string;
+  remember: boolean;
+}
+
 export function LoginPage() {
   const navigate = useNavigate();
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function onFinish(values: LoginFormValues) {
+    setLoading(true);
+    setError(null);
+    try {
+      // P0 阶段：admin 尚无正式登录接口，走后端 dev-login 后门
+      // 用账号字段作为 openid 标识，rolesOverride 指定 club_admin
+      await devLogin({
+        openid: values.username || 'dev_admin',
+        rolesOverride: ['club_admin'],
+        clubIdOverride: '1',
+      });
+      message.success('登录成功');
+      navigate('/');
+    } catch (err) {
+      const msg = err instanceof ApiError ? err.message : '登录失败';
+      setError(msg);
+    } finally {
+      setLoading(false);
+    }
+  }
 
   return (
     <div
@@ -20,7 +51,6 @@ export function LoginPage() {
         position: 'relative',
       }}
     >
-      {/* Logo */}
       <div
         style={{
           position: 'absolute',
@@ -53,7 +83,6 @@ export function LoginPage() {
         </div>
       </div>
 
-      {/* Login card */}
       <div
         style={{
           width: 420,
@@ -66,14 +95,26 @@ export function LoginPage() {
         <Title level={3} style={{ marginBottom: 8 }}>
           俱乐部管理员登录
         </Title>
-        <Text type="secondary" style={{ display: 'block', marginBottom: 32 }}>
+        <Text type="secondary" style={{ display: 'block', marginBottom: 16 }}>
           请使用俱乐部分配的账号登录
         </Text>
 
-        <Form
+        <Alert
+          type="warning"
+          showIcon
+          message="P0 开发模式"
+          description="当前走后端 /auth/dev-login 后门。账号字段用作 openid 标识，密码暂不校验。正式登录接口尚未建立。"
+          style={{ marginBottom: 24 }}
+        />
+
+        {error && (
+          <Alert type="error" showIcon message={error} style={{ marginBottom: 16 }} />
+        )}
+
+        <Form<LoginFormValues>
           layout="vertical"
-          onFinish={() => navigate('/')}
-          initialValues={{ username: 'zhou@xingchen-esports', remember: true }}
+          onFinish={onFinish}
+          initialValues={{ username: 'dev_admin', remember: true }}
         >
           <Form.Item
             label="账号"
@@ -90,7 +131,7 @@ export function LoginPage() {
           >
             <Input.Password
               prefix={<LockOutlined />}
-              placeholder="密码"
+              placeholder="密码（任意，本阶段不校验）"
               size="large"
               iconRender={visible => (visible ? <EyeOutlined /> : <EyeInvisibleOutlined />)}
             />
@@ -106,7 +147,7 @@ export function LoginPage() {
           </Form.Item>
 
           <Form.Item>
-            <Button type="primary" htmlType="submit" block size="large">
+            <Button type="primary" htmlType="submit" block size="large" loading={loading}>
               登 录
             </Button>
           </Form.Item>

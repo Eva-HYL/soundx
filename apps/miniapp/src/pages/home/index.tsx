@@ -1,12 +1,13 @@
 import { View, Text, ScrollView } from '@tarojs/components';
 import Taro from '@tarojs/taro';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useSafeArea } from '../../hooks/useSafeArea';
 import { TabBar } from '../../components/ui/TabBar';
 import { Tabs } from '../../components/ui/Tabs';
 import { Tag } from '../../components/ui/Tag';
 import { TU, GAMES, WORK_STATUS_MAP } from '../../constants/tokens';
 import { MOCK_PALS } from '../../mock/data';
+import { getSession, listClubPlayers, type PlayerListItem } from '../../services';
 
 const FILTER_TABS = ['推荐', '最近下单', '高分榜'];
 
@@ -242,16 +243,113 @@ function ClubSwitcher({
   );
 }
 
+const DEFAULT_CLUB_ID = '1';
+
+// 字段归一化：把后端 PlayerListItem 映射成首页卡片需要的 shape
+interface HomePalVM {
+  id: string;
+  name: string;
+  tier: string;
+  tags: string[];
+  status: keyof typeof WORK_STATUS_MAP | 'offline';
+  rating: number;
+  orders: number;
+  price: number;
+  /** 下单用 —— 挑一个默认服务，若无则 null */
+  defaultService: { serviceType: string; pricePerHour: string } | null;
+}
+
+function toVM(p: PlayerListItem): HomePalVM {
+  const firstService = p.services[0];
+  const defaultService = firstService
+    ? { serviceType: firstService.serviceType, pricePerHour: firstService.price ?? '0.00' }
+    : null;
+  const statusKey = (p.workStatus ?? 'offline') as HomePalVM['status'];
+  return {
+    id: p.id,
+    name: p.nickname || '陪玩',
+    tier: p.ability || `Lv.${p.level}`,
+    tags: p.services.slice(0, 3).map(s => s.serviceType),
+    status: WORK_STATUS_MAP[statusKey] ? statusKey : 'offline',
+    rating: parseFloat(p.rating ?? '0') || 0,
+    orders: p.totalOrders,
+    price: parseFloat(p.priceFrom ?? '0') || 0,
+    defaultService,
+  };
+}
+
+// 本地 mock 兜底（API 空或出错时显示）
+const MOCK_VM: HomePalVM[] = MOCK_PALS.map(p => ({
+  id: String(p.id),
+  name: p.name,
+  tier: p.tier,
+  tags: p.tags.slice(0, 3),
+  status: (p.status as HomePalVM['status']) ?? 'offline',
+  rating: p.rating,
+  orders: p.orders,
+  price: p.price,
+  defaultService: null,
+}));
+
 export default function HomePage() {
   const { statusBarHeight } = useSafeArea();
   const [activeTab, setActiveTab] = useState(0);
   const [clubName, setClubName] = useState('星辰电竞');
   const [switcherOpen, setSwitcherOpen] = useState(false);
+  const [clubId] = useState<string>(() => {
+    const s = getSession();
+    return s?.currentClubId ?? DEFAULT_CLUB_ID;
+  });
+  const [pals, setPals] = useState<HomePalVM[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    setLoadError(null);
+    listClubPlayers(clubId, { page: 1, pageSize: 20 })
+      .then(res => {
+        if (cancelled) return;
+        setPals(res.list.map(toVM));
+      })
+      .catch((err: Error) => {
+        if (cancelled) return;
+        console.warn('[Home] load players failed:', err.message);
+        setLoadError(err.message);
+        setPals(MOCK_VM);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [clubId]);
 
   const handleSwitch = (name: string) => {
     setClubName(name.replace('俱乐部', ''));
     setSwitcherOpen(false);
     Taro.showToast({ title: `已切换到 ${name}`, icon: 'none' });
+  };
+
+  const goPlayerDetail = (palId: string) => {
+    Taro.navigateTo({ url: `/pages/player/detail/index?id=${palId}` });
+  };
+
+  const goPlaceOrder = (pal: HomePalVM) => {
+    if (!pal.defaultService) {
+      Taro.showToast({ title: '该陪玩暂未配置服务', icon: 'none' });
+      return;
+    }
+    const params = new URLSearchParams({
+      clubId,
+      palId: pal.id,
+      palName: pal.name,
+      serviceType: pal.defaultService.serviceType,
+      pricePerHour: pal.defaultService.pricePerHour,
+    });
+    Taro.navigateTo({ url: `/pages/order/place/index?${params.toString()}` });
   };
 
   return (
@@ -422,8 +520,32 @@ export default function HomePage() {
 
       {/* 陪玩列表 */}
       <ScrollView scrollY style={{ flex: 1, height: 0, background: TU.white }}>
-        {MOCK_PALS.map((p, i) => {
-          const ws = WORK_STATUS_MAP[p.status as keyof typeof WORK_STATUS_MAP];
+        {loading && (
+          <View style={{ padding: '60rpx 0', textAlign: 'center' }}>
+            <Text style={{ fontSize: '24rpx', color: TU.text3 }}>加载中…</Text>
+          </View>
+        )}
+        {!loading && pals.length === 0 && (
+          <View style={{ padding: '100rpx 40rpx', textAlign: 'center' }}>
+            <Text style={{ fontSize: '28rpx', color: TU.text3, display: 'block' }}>
+              暂无在线陪玩
+            </Text>
+            {loadError && (
+              <Text
+                style={{
+                  fontSize: '22rpx',
+                  color: TU.text4,
+                  display: 'block',
+                  marginTop: '12rpx',
+                }}
+              >
+                {loadError}
+              </Text>
+            )}
+          </View>
+        )}
+        {pals.map((p, i) => {
+          const ws = WORK_STATUS_MAP[p.status] ?? WORK_STATUS_MAP.offline;
           return (
             <View
               key={p.id}
@@ -432,9 +554,9 @@ export default function HomePage() {
                 flexDirection: 'row',
                 gap: '24rpx',
                 padding: '28rpx 28rpx',
-                borderBottom: i < MOCK_PALS.length - 1 ? `1rpx solid ${TU.borderLight}` : 'none',
+                borderBottom: i < pals.length - 1 ? `1rpx solid ${TU.borderLight}` : 'none',
               }}
-              onClick={() => Taro.navigateTo({ url: `/pages/player/detail/index?id=${p.id}` })}
+              onClick={() => goPlayerDetail(p.id)}
             >
               {/* 头像 */}
               <View style={{ position: 'relative', flexShrink: 0 }}>
@@ -449,7 +571,7 @@ export default function HomePage() {
                     justifyContent: 'center',
                   }}
                 >
-                  <Text style={{ color: '#fff', fontSize: '36rpx' }}>{p.name[0]}</Text>
+                  <Text style={{ color: '#fff', fontSize: '36rpx' }}>{p.name[0] ?? 'P'}</Text>
                 </View>
                 <View
                   style={{
@@ -499,7 +621,7 @@ export default function HomePage() {
                     flexWrap: 'wrap',
                   }}
                 >
-                  {p.tags.slice(0, 3).map(t => (
+                  {p.tags.map(t => (
                     <View
                       key={t}
                       style={{
@@ -527,7 +649,7 @@ export default function HomePage() {
                 </View>
               </View>
 
-              {/* 价格 */}
+              {/* 价格 + 下单按钮（阻止冒泡，单独跳 place） */}
               <View
                 style={{
                   display: 'flex',
@@ -545,6 +667,10 @@ export default function HomePage() {
                     padding: '8rpx 24rpx',
                     border: `1rpx solid ${TU.brand}`,
                     borderRadius: '28rpx',
+                  }}
+                  onClick={(e: { stopPropagation?: () => void }) => {
+                    e.stopPropagation?.();
+                    goPlaceOrder(p);
                   }}
                 >
                   <Text style={{ fontSize: '24rpx', color: TU.brand }}>下单</Text>

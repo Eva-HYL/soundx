@@ -20,7 +20,16 @@
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "prisma:studio": "prisma studio",
-    "prisma:format": "prisma format"
+    "prisma:format": "prisma format",
+    "prisma:seed": "prisma db seed",
+    "docker:up": "docker compose -f deploy/docker-compose.yml --env-file deploy/.env up -d",
+    "docker:down": "docker compose -f deploy/docker-compose.yml --env-file deploy/.env down",
+    "docker:logs": "docker compose -f deploy/docker-compose.yml --env-file deploy/.env logs -f",
+    "docker:prod:up": "docker compose -f deploy/docker-compose.yml -f deploy/docker-compose.prod.yml --env-file deploy/.env up -d --build",
+    "docker:prod:down": "docker compose -f deploy/docker-compose.yml -f deploy/docker-compose.prod.yml --env-file deploy/.env down"
+  },
+  "prisma": {
+    "seed": "tsx prisma/seed.ts"
   },
   "devDependencies": {
     "@eslint/js": "^9.0.0",
@@ -31,6 +40,7 @@
     "eslint-plugin-react-hooks": "^5.0.0",
     "prettier": "^3.0.0",
     "prisma": "^5.22.0",
+    "tsx": "^4.21.0",
     "turbo": "^2.3.0",
     "typescript": "^5.6.0",
     "typescript-eslint": "^8.0.0"

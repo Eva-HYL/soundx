@@ -1,12 +1,79 @@
 import { View, Text, ScrollView } from '@tarojs/components';
 import Taro from '@tarojs/taro';
-import { useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useSafeArea } from '../../../hooks/useSafeArea';
 import { TabBar } from '../../../components/ui/TabBar';
 import { Tabs } from '../../../components/ui/Tabs';
 import { StatusTag } from '../../../components/ui/Tag';
 import { Button } from '../../../components/ui/Button';
 import { TU } from '../../../constants/tokens';
+import {
+  ApiError,
+  finishService,
+  listMyPalOrders,
+  startService,
+  type OrderDto,
+} from '../../../services';
+
+interface PalOrderVM {
+  id: string;
+  orderNo: string;
+  user: string;
+  game: string;
+  svc: string;
+  dur: number;
+  total: number;
+  status: string;
+  detail: string;
+}
+
+function vmDetail(o: OrderDto): string {
+  switch (o.status) {
+    case 'accepted':
+      return '已接单，等待开始服务';
+    case 'in_service': {
+      const start = o.startedAt ? new Date(o.startedAt).getTime() : 0;
+      if (!start) return '服务中';
+      const elapsed = Math.max(0, Date.now() - start);
+      const mins = Math.floor(elapsed / 60_000);
+      return `开始于 ${new Date(start).toLocaleTimeString().slice(0, 5)} · 已进行 ${mins} 分钟`;
+    }
+    case 'pending_report':
+      return '服务已结束，请填写战绩报告';
+    case 'pending_report_audit':
+      return '战绩已提交，等待管理员审核';
+    case 'completed':
+      return o.finishedAt ? `完成于 ${new Date(o.finishedAt).toLocaleString()}` : '订单已完成';
+    case 'cancelled':
+      return o.cancelReason ?? '订单已取消';
+    default:
+      return '';
+  }
+}
+
+function toVM(o: OrderDto): PalOrderVM {
+  return {
+    id: o.id,
+    orderNo: o.orderNo,
+    user: o.user?.nickname ?? '老板',
+    game: o.serviceType, // 暂用 serviceType 当游戏标签
+    svc: o.serviceType,
+    dur: o.hours ? parseFloat(o.hours) : 0,
+    total: o.totalAmount ? parseFloat(o.totalAmount) : 0,
+    status: o.status ?? '',
+    detail: vmDetail(o),
+  };
+}
+
+// Tab index → status filter mapping（小写，逗号分隔后端）
+const TAB_STATUS: (string | null)[] = [
+  'accepted,in_service', // 进行中
+  'pending_report,pending_report_audit', // 待审核
+  'completed', // 已完成
+  null, // 全部
+];
+
+const LIST_TABS = ['进行中', '待审核', '已完成', '全部'];
 
 const GAME_MAP: Record<string, string> = {
   hok: '王者荣耀',
@@ -17,86 +84,81 @@ const GAME_MAP: Record<string, string> = {
   val: '无畏契约',
 };
 
-const MOCK_PAL_ORDERS = [
-  {
-    orderNo: 'SX2404221222',
-    user: '咕咕不鸽',
-    game: 'hok',
-    svc: '排位上分',
-    dur: 2,
-    total: 80,
-    status: 'in_service',
-    detail: '开始 14:10 · 剩余约 1h30m',
-  },
-  {
-    orderNo: 'SX2404221185',
-    user: '奶茶要七分糖',
-    game: 'lol',
-    svc: '巅峰赛陪练',
-    dur: 3,
-    total: 165,
-    status: 'pending_report',
-    detail: '服务已结束，请填写战绩报告',
-  },
-  {
-    orderNo: 'SX2404221074',
-    user: '摸鱼打工人',
-    game: 'hok',
-    svc: '教学指导',
-    dur: 2,
-    total: 80,
-    status: 'pending_report_audit',
-    detail: '战绩已提交，等待管理员审核',
-  },
-  {
-    orderNo: 'SX2404221037',
-    user: '晚风不识路',
-    game: 'val',
-    svc: '排位上分',
-    dur: 2,
-    total: 100,
-    status: 'completed',
-    detail: '结算 72 分 · 04-21 21:00',
-  },
-];
-
-// Tab index → status filter mapping
-const TAB_STATUS_FILTER: (string[] | null)[] = [
-  ['in_service'], // 进行中 3
-  ['pending_report_audit'], // 待审核 1
-  ['completed'], // 已完成 42
-  null, // 全部 48
-];
-
-const LIST_TABS = ['进行中 3', '待审核 1', '已完成 42', '全部 48'];
-
 export default function PalOrderListPage() {
   const { statusBarHeight } = useSafeArea();
   const [activeTab, setActiveTab] = useState(0);
+  const [orders, setOrders] = useState<PalOrderVM[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [submittingId, setSubmittingId] = useState<string | null>(null);
+  const [tick, setTick] = useState(0);
 
-  const filter = TAB_STATUS_FILTER[activeTab];
-  const visibleOrders = filter
-    ? MOCK_PAL_ORDERS.filter(o => filter.includes(o.status))
-    : MOCK_PAL_ORDERS;
+  const reload = useCallback(() => setTick(t => t + 1), []);
 
-  function handleContactUser(_orderNo: string) {
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    setLoadError(null);
+    listMyPalOrders({
+      page: 1,
+      pageSize: 30,
+      status: TAB_STATUS[activeTab] ?? undefined,
+    })
+      .then(res => {
+        if (cancelled) return;
+        setOrders(res.list.map(toVM));
+      })
+      .catch((err: Error) => {
+        if (cancelled) return;
+        setLoadError(err.message);
+        setOrders([]);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [activeTab, tick]);
+
+  function handleContactUser(_orderId: string) {
     Taro.showToast({ title: '即将打开聊天', icon: 'none' });
   }
 
-  function handleEndService(_orderNo: string) {
-    Taro.showToast({ title: '服务已结束', icon: 'success' });
+  async function handleStartService(orderId: string) {
+    setSubmittingId(orderId);
+    try {
+      await startService(orderId);
+      Taro.showToast({ title: '已开始服务', icon: 'success' });
+      reload();
+    } catch (err) {
+      const msg = err instanceof ApiError ? err.message : '操作失败';
+      Taro.showToast({ title: msg, icon: 'none' });
+    } finally {
+      setSubmittingId(null);
+    }
   }
 
-  function handleGoReport(orderNo: string) {
-    Taro.navigateTo({ url: `/pages/report/submit/index?orderNo=${orderNo}` });
+  async function handleEndService(orderId: string) {
+    setSubmittingId(orderId);
+    try {
+      await finishService(orderId);
+      Taro.showToast({ title: '服务已结束', icon: 'success' });
+      reload();
+    } catch (err) {
+      const msg = err instanceof ApiError ? err.message : '操作失败';
+      Taro.showToast({ title: msg, icon: 'none' });
+    } finally {
+      setSubmittingId(null);
+    }
   }
 
-  function handleViewReport(_orderNo: string) {
-    Taro.showToast({ title: '查看战绩', icon: 'none' });
+  function handleGoReport(orderId: string) {
+    Taro.navigateTo({ url: `/pages/report/submit/index?orderId=${orderId}` });
   }
 
-  function handleViewDetail(orderNo: string) {
-    Taro.navigateTo({ url: `/pages/order/detail/index?orderNo=${orderNo}` });
+  function handleViewDetail(orderId: string) {
+    Taro.navigateTo({ url: `/pages/order/detail/index?orderId=${orderId}` });
   }
 
   return (
@@ -112,7 +174,6 @@ export default function PalOrderListPage() {
           flexShrink: 0,
         }}
       >
-        {/* Status-bar spacer */}
         <View style={{ height: `${statusBarHeight}px` }} />
         <View
           style={{
@@ -134,10 +195,10 @@ export default function PalOrderListPage() {
               border: `1rpx solid ${TU.border}`,
               borderRadius: '28rpx',
             }}
-            onClick={() => Taro.showToast({ title: '筛选功能开发中', icon: 'none' })}
+            onClick={reload}
           >
-            <Text style={{ fontSize: '24rpx', color: TU.text2 }}>⊟</Text>
-            <Text style={{ fontSize: '24rpx', color: TU.text2 }}>筛选</Text>
+            <Text style={{ fontSize: '24rpx', color: TU.text2 }}>↻</Text>
+            <Text style={{ fontSize: '24rpx', color: TU.text2 }}>刷新</Text>
           </View>
         </View>
         <Tabs tabs={LIST_TABS} active={activeTab} onChange={setActiveTab} />
@@ -153,22 +214,35 @@ export default function PalOrderListPage() {
             gap: '16rpx',
           }}
         >
-          {visibleOrders.length === 0 && (
-            <View
-              style={{
-                padding: '80rpx 0',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-              }}
-            >
-              <Text style={{ fontSize: '28rpx', color: TU.text3 }}>暂无订单</Text>
+          {loading && (
+            <View style={{ padding: '40rpx 0', textAlign: 'center' }}>
+              <Text style={{ fontSize: '24rpx', color: TU.text3 }}>加载中…</Text>
             </View>
           )}
-          {visibleOrders.map(order => {
+          {!loading && orders.length === 0 && (
+            <View style={{ padding: '80rpx 0', textAlign: 'center' }}>
+              <Text style={{ fontSize: '28rpx', color: TU.text3, display: 'block' }}>
+                {loadError ? '加载失败' : '暂无订单'}
+              </Text>
+              {loadError && (
+                <Text
+                  style={{
+                    fontSize: '22rpx',
+                    color: TU.text4,
+                    display: 'block',
+                    marginTop: '12rpx',
+                  }}
+                >
+                  {loadError}
+                </Text>
+              )}
+            </View>
+          )}
+          {orders.map(order => {
+            const busy = submittingId === order.id;
             return (
               <View
-                key={order.orderNo}
+                key={order.id}
                 style={{
                   background: TU.white,
                   borderRadius: `${TU.radiusLg * 2}rpx`,
@@ -176,7 +250,6 @@ export default function PalOrderListPage() {
                   boxShadow: '0 2rpx 12rpx rgba(0,0,0,0.04)',
                 }}
               >
-                {/* 卡片头：游戏名 + 状态标签 */}
                 <View
                   style={{
                     display: 'flex',
@@ -193,7 +266,6 @@ export default function PalOrderListPage() {
                   <StatusTag status={order.status} />
                 </View>
 
-                {/* 卡片主体 */}
                 <View style={{ padding: '20rpx 24rpx 0' }}>
                   <Text
                     style={{ fontSize: '30rpx', fontWeight: 600, color: TU.text, display: 'block' }}
@@ -213,12 +285,11 @@ export default function PalOrderListPage() {
                       老板 {order.user} · {order.dur} 小时
                     </Text>
                     <Text style={{ fontSize: '32rpx', fontWeight: 600, color: TU.error }}>
-                      ¥{order.total}
+                      ¥{order.total.toFixed(0)}
                     </Text>
                   </View>
 
-                  {/* 状态详情框 */}
-                  {order.status === 'in_service' && (
+                  {order.status === 'in_service' && order.detail && (
                     <View
                       style={{
                         background: TU.brandTint,
@@ -247,14 +318,15 @@ export default function PalOrderListPage() {
                       <Text style={{ fontSize: '24rpx', color: TU.warning }}>{order.detail}</Text>
                     </View>
                   )}
-                  {(order.status === 'pending_report_audit' || order.status === 'completed') && (
+                  {(order.status === 'pending_report_audit' ||
+                    order.status === 'completed' ||
+                    order.status === 'accepted') && (
                     <View style={{ marginTop: '16rpx' }}>
                       <Text style={{ fontSize: '24rpx', color: TU.text3 }}>{order.detail}</Text>
                     </View>
                   )}
                 </View>
 
-                {/* 卡片底部按钮 */}
                 <View
                   style={{
                     display: 'flex',
@@ -266,36 +338,44 @@ export default function PalOrderListPage() {
                     marginTop: '12rpx',
                   }}
                 >
-                  {order.status === 'in_service' && (
+                  {order.status === 'accepted' && (
                     <>
-                      <Button size="small" onClick={() => handleContactUser(order.orderNo)}>
+                      <Button size="small" onClick={() => handleContactUser(order.id)}>
                         联系老板
                       </Button>
                       <Button
                         type="primary"
                         size="small"
-                        onClick={() => handleEndService(order.orderNo)}
+                        disabled={busy}
+                        onClick={() => handleStartService(order.id)}
                       >
-                        结束服务
+                        {busy ? '处理中…' : '开始服务'}
+                      </Button>
+                    </>
+                  )}
+                  {order.status === 'in_service' && (
+                    <>
+                      <Button size="small" onClick={() => handleContactUser(order.id)}>
+                        联系老板
+                      </Button>
+                      <Button
+                        type="primary"
+                        size="small"
+                        disabled={busy}
+                        onClick={() => handleEndService(order.id)}
+                      >
+                        {busy ? '处理中…' : '结束服务'}
                       </Button>
                     </>
                   )}
                   {order.status === 'pending_report' && (
-                    <Button
-                      type="primary"
-                      size="small"
-                      onClick={() => handleGoReport(order.orderNo)}
-                    >
+                    <Button type="primary" size="small" onClick={() => handleGoReport(order.id)}>
                       去填战绩
                     </Button>
                   )}
-                  {order.status === 'pending_report_audit' && (
-                    <Button size="small" onClick={() => handleViewReport(order.orderNo)}>
-                      查看战绩
-                    </Button>
-                  )}
-                  {order.status === 'completed' && (
-                    <Button size="small" onClick={() => handleViewDetail(order.orderNo)}>
+                  {(order.status === 'pending_report_audit' ||
+                    order.status === 'completed') && (
+                    <Button size="small" onClick={() => handleViewDetail(order.id)}>
                       查看详情
                     </Button>
                   )}

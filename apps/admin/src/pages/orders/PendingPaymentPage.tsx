@@ -1,5 +1,6 @@
 import { CheckOutlined, CloseOutlined, EyeOutlined, PictureOutlined } from '@ant-design/icons';
 import {
+  Alert,
   Badge,
   Button,
   Drawer,
@@ -7,14 +8,17 @@ import {
   Input,
   Select,
   Space,
+  Spin,
   Table,
   Tag,
   Tooltip,
   Typography,
+  message,
 } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
-import { useCallback, useEffect, useState } from 'react';
-import { GAMES, PENDING_PAYMENTS } from '../../mock/data';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { GAMES } from '../../mock/data';
+import { ApiError, adminConfirmPayment, listAdminOrders, type OrderDto } from '../../services';
 
 const { Text, Title } = Typography;
 
@@ -34,9 +38,46 @@ function getRate(pal: string | null): number {
   return PAL_OVERRIDES[pal] ?? DEFAULT_RATE;
 }
 
-type Order = (typeof PENDING_PAYMENTS)[number] & { rate: number };
+/** 后端 OrderDto 归一化为页面需要的形态 */
+interface Order {
+  id: string;
+  orderNo: string;
+  user: string;
+  pal: string | null;
+  game: string;
+  service: string;
+  duration: number;
+  amount: number;
+  type: 'assign' | 'normal';
+  ago: string;
+  rate: number;
+}
 
-const ORDERS: Order[] = PENDING_PAYMENTS.map(o => ({ ...o, rate: getRate(o.pal) }));
+function timeAgo(iso: string | null): string {
+  if (!iso) return '刚刚';
+  const diff = Date.now() - new Date(iso).getTime();
+  if (diff < 60_000) return '刚刚';
+  if (diff < 3_600_000) return `${Math.floor(diff / 60_000)}分钟`;
+  if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)}小时`;
+  return `${Math.floor(diff / 86_400_000)}天`;
+}
+
+function toOrderVM(o: OrderDto): Order {
+  const pal = o.playerName ?? o.player?.nickname ?? null;
+  return {
+    id: o.id,
+    orderNo: o.orderNo,
+    user: o.user?.nickname ?? '老板',
+    pal,
+    game: o.serviceType, // schema 未独立存 game，暂用 serviceType
+    service: o.serviceType,
+    duration: o.hours ? parseFloat(o.hours) : 0,
+    amount: o.totalAmount ? parseFloat(o.totalAmount) : 0,
+    type: o.dispatchMode === 'designated' || o.dispatchMode === 'assign' ? 'assign' : 'normal',
+    ago: timeAgo(o.createdAt),
+    rate: getRate(pal),
+  };
+}
 
 function SplitPreview({
   amount,
@@ -180,10 +221,44 @@ export function PendingPaymentPage() {
   const [rejected, setRejected] = useState<Set<string>>(new Set());
   const [amount, setAmount] = useState<number>(0);
 
-  const data = ORDERS.filter(
-    r =>
-      (gameFilter === 'all' || r.game === gameFilter) &&
-      (typeFilter === 'all' || r.type === typeFilter),
+  const [orders, setOrders] = useState<Order[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [submittingId, setSubmittingId] = useState<string | null>(null);
+  const [reloadTick, setReloadTick] = useState(0);
+
+  const reload = useCallback(() => setReloadTick(t => t + 1), []);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    setLoadError(null);
+    listAdminOrders({ page: 1, pageSize: 50, status: 'pending_payment' })
+      .then(res => {
+        if (cancelled) return;
+        setOrders(res.list.map(toOrderVM));
+      })
+      .catch((err: Error) => {
+        if (cancelled) return;
+        setLoadError(err.message);
+        setOrders([]);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [reloadTick]);
+
+  const data = useMemo(
+    () =>
+      orders.filter(
+        r =>
+          (gameFilter === 'all' || r.game === gameFilter) &&
+          (typeFilter === 'all' || r.type === typeFilter),
+      ),
+    [orders, gameFilter, typeFilter],
   );
 
   const openDrawer = (order: Order) => {
@@ -192,17 +267,29 @@ export function PendingPaymentPage() {
   };
 
   const handleConfirm = useCallback(
-    (orderNo: string) => {
-      setConfirmed(p => new Set(p).add(orderNo));
-      if (drawerOrder?.orderNo === orderNo) setDrawerOrder(null);
+    async (order: Order) => {
+      setSubmittingId(order.id);
+      try {
+        await adminConfirmPayment(order.id);
+        setConfirmed(p => new Set(p).add(order.orderNo));
+        message.success(`订单 ${order.orderNo} 已确认付款`);
+        if (drawerOrder?.id === order.id) setDrawerOrder(null);
+      } catch (err) {
+        const msg = err instanceof ApiError ? err.message : '确认付款失败';
+        message.error(msg);
+      } finally {
+        setSubmittingId(null);
+      }
     },
     [drawerOrder],
   );
 
   const handleReject = useCallback(
-    (orderNo: string) => {
-      setRejected(p => new Set(p).add(orderNo));
-      if (drawerOrder?.orderNo === orderNo) setDrawerOrder(null);
+    (order: Order) => {
+      // 后端暂无"驳回付款"接口；本地标记，后续接通 P1
+      setRejected(p => new Set(p).add(order.orderNo));
+      if (drawerOrder?.id === order.id) setDrawerOrder(null);
+      message.info('已本地驳回（后端驳回接口待接入）');
     },
     [drawerOrder],
   );
@@ -210,8 +297,8 @@ export function PendingPaymentPage() {
   useEffect(() => {
     if (!drawerOrder) return;
     const handler = (e: KeyboardEvent) => {
-      if (e.key === 'y' || e.key === 'Y') handleConfirm(drawerOrder.orderNo);
-      if (e.key === 'n' || e.key === 'N') handleReject(drawerOrder.orderNo);
+      if (e.key === 'y' || e.key === 'Y') handleConfirm(drawerOrder);
+      if (e.key === 'n' || e.key === 'N') handleReject(drawerOrder);
       if (e.key === 'Escape') setDrawerOrder(null);
     };
     window.addEventListener('keydown', handler);
@@ -295,7 +382,7 @@ export function PendingPaymentPage() {
     },
     {
       title: '操作',
-      width: 150,
+      width: 170,
       render: (_, r) => {
         if (confirmed.has(r.orderNo)) return <Tag color="green">已确认</Tag>;
         if (rejected.has(r.orderNo)) return <Tag color="red">已拒绝</Tag>;
@@ -305,7 +392,8 @@ export function PendingPaymentPage() {
               size="small"
               type="primary"
               icon={<CheckOutlined />}
-              onClick={() => handleConfirm(r.orderNo)}
+              loading={submittingId === r.id}
+              onClick={() => handleConfirm(r)}
             >
               确认
             </Button>
@@ -313,7 +401,7 @@ export function PendingPaymentPage() {
               size="small"
               danger
               icon={<CloseOutlined />}
-              onClick={() => handleReject(r.orderNo)}
+              onClick={() => handleReject(r)}
             >
               拒绝
             </Button>
@@ -337,6 +425,9 @@ export function PendingPaymentPage() {
         </Title>
         <Badge count={pending.length} style={{ background: '#faad14' }} />
         <div style={{ flex: 1 }} />
+        <Button size="small" onClick={reload} loading={loading}>
+          刷新
+        </Button>
         <Select
           value={gameFilter}
           onChange={setGameFilter}
@@ -358,20 +449,32 @@ export function PendingPaymentPage() {
         />
       </div>
 
-      <Table
-        dataSource={data}
-        columns={columns}
-        rowKey="orderNo"
-        size="small"
-        pagination={false}
-        rowClassName={r =>
-          confirmed.has(r.orderNo) || rejected.has(r.orderNo) ? 'ant-table-row-disabled' : ''
-        }
-        onRow={r => ({
-          style: { opacity: confirmed.has(r.orderNo) || rejected.has(r.orderNo) ? 0.4 : 1 },
-        })}
-        scroll={{ x: 900 }}
-      />
+      {loadError && (
+        <Alert
+          type="error"
+          showIcon
+          message={`加载失败：${loadError}`}
+          closable
+          style={{ marginBottom: 12 }}
+        />
+      )}
+
+      <Spin spinning={loading}>
+        <Table
+          dataSource={data}
+          columns={columns}
+          rowKey="id"
+          size="small"
+          pagination={false}
+          rowClassName={r =>
+            confirmed.has(r.orderNo) || rejected.has(r.orderNo) ? 'ant-table-row-disabled' : ''
+          }
+          onRow={r => ({
+            style: { opacity: confirmed.has(r.orderNo) || rejected.has(r.orderNo) ? 0.4 : 1 },
+          })}
+          scroll={{ x: 900 }}
+        />
+      </Spin>
 
       <Drawer
         open={!!drawerOrder}
@@ -393,14 +496,15 @@ export function PendingPaymentPage() {
               <Button
                 type="primary"
                 icon={<CheckOutlined />}
-                onClick={() => handleConfirm(drawerOrder.orderNo)}
+                loading={submittingId === drawerOrder.id}
+                onClick={() => handleConfirm(drawerOrder)}
               >
                 确认付款 · 自动派发给 {palName}
               </Button>
               <Button
                 danger
                 icon={<CloseOutlined />}
-                onClick={() => handleReject(drawerOrder.orderNo)}
+                onClick={() => handleReject(drawerOrder)}
               >
                 凭证有误 (N)
               </Button>

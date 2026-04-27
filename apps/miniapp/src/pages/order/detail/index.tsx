@@ -1,18 +1,16 @@
 import { View, Text, ScrollView } from '@tarojs/components';
 import Taro from '@tarojs/taro';
-import { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { NavBar } from '../../../components/ui/NavBar';
 import { Button } from '../../../components/ui/Button';
 import { ListItem } from '../../../components/ui/ListItem';
 import { TU } from '../../../constants/tokens';
-import { GAME_MAP } from '../../../constants/tokens';
-import { MOCK_USER_ORDERS } from '../../../mock/data';
+import { ApiError, cancelOrder, getOrderDetail, type OrderDto } from '../../../services';
 
 type Stage = 'await_upload' | 'uploaded';
 
 /** Simple QR code placeholder built from View grids */
 function QRCode() {
-  // 7-column finder pattern rows encoded as bit arrays (1=filled, 0=empty)
   const pattern: number[][] = [
     [1, 1, 1, 1, 1, 1, 1],
     [1, 0, 0, 0, 0, 0, 1],
@@ -34,7 +32,6 @@ function QRCode() {
         background: TU.white,
       }}
     >
-      {/* Top-left finder */}
       <View style={{ display: 'flex', flexDirection: 'column', gap: '2rpx' }}>
         {pattern.map((row, ri) => (
           <View key={ri} style={{ display: 'flex', flexDirection: 'row', gap: '2rpx' }}>
@@ -56,14 +53,48 @@ function QRCode() {
   );
 }
 
+function formatDateTime(iso: string | null): string {
+  if (!iso) return '--';
+  const d = new Date(iso);
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
 export default function OrderDetailPage() {
   const params = Taro.getCurrentInstance().router?.params ?? {};
-  const orderNo = params.orderNo ?? 'SX2404221222';
+  const orderId = params.orderId;
 
-  const order = MOCK_USER_ORDERS.find(o => o.orderNo === orderNo) ?? MOCK_USER_ORDERS[0];
-
+  const [order, setOrder] = useState<OrderDto | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [stage, setStage] = useState<Stage>('await_upload');
   const [waitSecs, setWaitSecs] = useState(0);
+
+  useEffect(() => {
+    if (!orderId) {
+      setLoadError('缺少订单 ID');
+      setLoading(false);
+      return;
+    }
+    let cancelled = false;
+    getOrderDetail(orderId)
+      .then(o => {
+        if (cancelled) return;
+        setOrder(o);
+        // 订单状态决定 stage：PENDING_PAYMENT = 未上传凭证，其他都视为已进入后续流程
+        setStage(o.status === 'pending_payment' ? 'await_upload' : 'uploaded');
+      })
+      .catch((err: Error) => {
+        if (cancelled) return;
+        setLoadError(err.message);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [orderId]);
 
   useEffect(() => {
     if (stage !== 'uploaded') return;
@@ -71,29 +102,65 @@ export default function OrderDetailPage() {
     return () => clearInterval(timer);
   }, [stage]);
 
-  const shortNo = orderNo.slice(-4);
-
   function handleUpload() {
     Taro.chooseImage({
       count: 1,
       success: () => {
+        // 后端尚未提供"用户上传凭证"接口，先本地标记为已上传
         setStage('uploaded');
         setWaitSecs(0);
-        Taro.showToast({ title: '凭证已提交', icon: 'success' });
+        Taro.showToast({ title: '凭证已提交（待后端打通）', icon: 'success' });
       },
     });
   }
 
-  function handleCancel() {
-    Taro.showToast({ title: '订单已取消', icon: 'none' });
-    Taro.navigateBack();
+  async function handleCancel() {
+    if (!order) return;
+    try {
+      await cancelOrder(order.id, '用户主动取消');
+      Taro.showToast({ title: '订单已取消', icon: 'none' });
+      setTimeout(() => Taro.navigateBack(), 800);
+    } catch (err) {
+      const msg = err instanceof ApiError ? err.message : '取消失败';
+      Taro.showToast({ title: msg, icon: 'none' });
+    }
   }
+
+  // 加载 / 错误态
+  if (loading) {
+    return (
+      <View style={{ height: '100vh', display: 'flex', flexDirection: 'column', background: TU.bgPage }}>
+        <NavBar title="订单详情" />
+        <View style={{ padding: '80rpx 0', textAlign: 'center' }}>
+          <Text style={{ fontSize: '26rpx', color: TU.text3 }}>加载中…</Text>
+        </View>
+      </View>
+    );
+  }
+  if (loadError || !order) {
+    return (
+      <View style={{ height: '100vh', display: 'flex', flexDirection: 'column', background: TU.bgPage }}>
+        <NavBar title="订单详情" />
+        <View style={{ padding: '80rpx 40rpx', textAlign: 'center' }}>
+          <Text style={{ fontSize: '28rpx', color: TU.error, display: 'block' }}>
+            {loadError ?? '订单不存在'}
+          </Text>
+        </View>
+      </View>
+    );
+  }
+
+  const orderNo = order.orderNo;
+  const shortNo = orderNo.slice(-4);
+  const totalAmount = order.totalAmount ? parseFloat(order.totalAmount) : 0;
+  const hours = order.hours ? parseFloat(order.hours) : 0;
+  const pricePerHour = order.pricePerHour ? parseFloat(order.pricePerHour) : 0;
 
   return (
     <View
       style={{ height: '100vh', display: 'flex', flexDirection: 'column', background: TU.bgPage }}
     >
-      {/* Top status banner with gradient bg */}
+      {/* Top status banner */}
       <View
         style={{
           background: `linear-gradient(135deg, ${TU.brand} 0%, ${TU.brandDark} 100%)`,
@@ -113,7 +180,6 @@ export default function OrderDetailPage() {
             gap: '14rpx',
           }}
         >
-          {/* Status icon */}
           <View
             style={{
               width: '80rpx',
@@ -127,19 +193,16 @@ export default function OrderDetailPage() {
           >
             <Text style={{ fontSize: '40rpx' }}>{stage === 'uploaded' ? '✓' : '🕐'}</Text>
           </View>
-          {/* Big title */}
           <Text
             style={{ fontSize: '34rpx', fontWeight: 600, color: TU.white, textAlign: 'center' }}
           >
             {stage === 'await_upload' ? '待上传付款凭证' : '凭证已提交，等待确认'}
           </Text>
-          {/* Subtitle */}
           <Text style={{ fontSize: '24rpx', color: 'rgba(255,255,255,0.75)', textAlign: 'center' }}>
             {stage === 'await_upload'
               ? '请转账至俱乐部收款码后上传凭证'
               : '管理员审核通过后将自动派单'}
           </Text>
-          {/* Wait pill */}
           {stage === 'uploaded' && (
             <View
               style={{
@@ -156,7 +219,7 @@ export default function OrderDetailPage() {
       </View>
 
       <ScrollView scrollY style={{ flex: 1, height: 0 }}>
-        {/* Receipt / ticket card */}
+        {/* Receipt card */}
         <View
           style={{
             margin: '20rpx 24rpx 0',
@@ -166,7 +229,6 @@ export default function OrderDetailPage() {
             overflow: 'hidden',
           }}
         >
-          {/* Top: amount + order number */}
           <View
             style={{
               padding: '32rpx 32rpx 24rpx',
@@ -180,7 +242,7 @@ export default function OrderDetailPage() {
             <Text
               style={{ fontSize: '64rpx', color: TU.error, fontWeight: 700, lineHeight: '1.1' }}
             >
-              ¥{order.total}.00
+              ¥{totalAmount.toFixed(2)}
             </Text>
             <View
               style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '12rpx' }}
@@ -192,15 +254,16 @@ export default function OrderDetailPage() {
                   background: TU.brandTint,
                   borderRadius: `${TU.radius}rpx`,
                 }}
+                onClick={() => {
+                  Taro.setClipboardData({ data: orderNo });
+                }}
               >
                 <Text style={{ fontSize: '20rpx', color: TU.brand }}>复制</Text>
               </View>
             </View>
           </View>
 
-          {/* Ticket tear divider */}
           <View style={{ position: 'relative', height: '32rpx', overflow: 'visible' }}>
-            {/* Dashed line */}
             <View
               style={{
                 position: 'absolute',
@@ -210,7 +273,6 @@ export default function OrderDetailPage() {
                 borderTop: `2rpx dashed ${TU.borderLight}`,
               }}
             />
-            {/* Left cutout */}
             <View
               style={{
                 position: 'absolute',
@@ -223,7 +285,6 @@ export default function OrderDetailPage() {
                 transform: 'translateY(-50%)',
               }}
             />
-            {/* Right cutout */}
             <View
               style={{
                 position: 'absolute',
@@ -238,7 +299,6 @@ export default function OrderDetailPage() {
             />
           </View>
 
-          {/* Bottom: QR + instructions */}
           <View
             style={{
               padding: '24rpx 32rpx 36rpx',
@@ -270,18 +330,14 @@ export default function OrderDetailPage() {
             boxShadow: '0 2rpx 12rpx rgba(0,0,0,0.04)',
           }}
         >
-          <ListItem title="陪玩" extraText={order.pal} arrow="none" />
-          <ListItem
-            title="游戏 · 服务"
-            extraText={`${GAME_MAP[order.game] ?? order.game} · ${order.svc}`}
-            arrow="none"
-          />
+          <ListItem title="陪玩" extraText={order.playerName ?? '--'} arrow="none" />
+          <ListItem title="服务" extraText={order.serviceType} arrow="none" />
           <ListItem
             title="时长 / 单价"
-            extraText={`${order.dur}h / ¥${order.total / order.dur}/h`}
+            extraText={`${hours}h / ¥${pricePerHour.toFixed(2)}/h`}
             arrow="none"
           />
-          <ListItem title="下单时间" extraText="2024-04-22 14:02" arrow="none" last />
+          <ListItem title="下单时间" extraText={formatDateTime(order.createdAt)} arrow="none" last />
         </View>
 
         {/* Upload voucher */}
@@ -308,7 +364,6 @@ export default function OrderDetailPage() {
           </View>
 
           {stage === 'uploaded' ? (
-            /* Uploaded placeholder */
             <View
               style={{
                 width: '160rpx',
@@ -326,7 +381,6 @@ export default function OrderDetailPage() {
               <Text style={{ fontSize: '20rpx', color: TU.success }}>已上传</Text>
             </View>
           ) : (
-            /* Add box */
             <View
               onClick={handleUpload}
               style={{

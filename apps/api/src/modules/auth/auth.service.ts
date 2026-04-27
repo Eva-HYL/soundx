@@ -8,6 +8,20 @@ import { bigintToString } from '@/common/mappers';
 import { EnvService } from '@/config/env.service';
 import { PrismaService } from '@/infra/prisma/prisma.service';
 
+/**
+ * 临时开发后门输入。仅非生产环境可用。
+ * 真正的 admin 登录（用户名+密码 或 SSO）是 P1 工作。
+ */
+export interface DevLoginInput {
+  /** 直接传 User.id 字符串（BigInt）或 User.openid */
+  userId?: string;
+  openid?: string;
+  /** 如果指定，覆盖数据库中的角色，用于模拟 club_admin 场景 */
+  rolesOverride?: RoleType[];
+  /** 如果 roles 中包含 club_admin/platform_admin/super_admin，可以指定 clubId */
+  clubIdOverride?: string;
+}
+
 export interface LoginResult {
   token: string;
   expiresIn: number;
@@ -149,6 +163,73 @@ export class AuthService {
         reason: `code2session request failed: ${msg}`,
       });
     }
+  }
+
+  /**
+   * 开发环境后门登录，用于 admin 联调（admin 尚无正式登录接口）。
+   * 生产环境抛 UNAUTHORIZED。
+   */
+  async devLogin(input: DevLoginInput): Promise<LoginResult> {
+    if (this.env.isProduction) {
+      throw new BusinessException(ErrorCode.UNAUTHORIZED, { reason: 'dev-login disabled in prod' });
+    }
+
+    const user = await this.resolveDevUser(input);
+    const roleRecords = await this.prisma.userRole.findMany({
+      where: { userId: user.id, status: true },
+    });
+
+    const dbRoles = roleRecords.map(r => r.role.toLowerCase() as RoleType);
+    const roles = input.rolesOverride?.length ? input.rolesOverride : dbRoles;
+    if (roles.length === 0) roles.push('user');
+
+    const dbFirstClubRole = roleRecords.find(r => r.clubId !== null);
+    const clubId = input.clubIdOverride
+      ? BigInt(input.clubIdOverride)
+      : (dbFirstClubRole?.clubId ?? null);
+
+    const userIdStr = user.id.toString();
+    const clubIdStr = bigintToString(clubId);
+
+    const token = await this.jwt.signAsync({
+      sub: userIdStr,
+      roles,
+      clubId: clubIdStr,
+    });
+
+    this.logger.warn(
+      `[dev-login] issued token for user=${userIdStr} roles=${roles.join(',')} club=${clubIdStr}`,
+    );
+
+    return {
+      token,
+      expiresIn: this.parseExpiresInToSeconds(this.env.jwtExpiresIn),
+      userId: userIdStr,
+      roles,
+      currentClubId: clubIdStr,
+    };
+  }
+
+  private async resolveDevUser(input: DevLoginInput) {
+    if (input.userId) {
+      const user = await this.prisma.user.findUnique({ where: { id: BigInt(input.userId) } });
+      if (user) return user;
+    }
+    if (input.openid) {
+      const user = await this.prisma.user.findUnique({ where: { openid: input.openid } });
+      if (user) return user;
+    }
+    // 否则创建一个 "dev-admin" 兜底账号
+    const devOpenid = input.openid ?? 'dev_admin';
+    return this.prisma.user.upsert({
+      where: { openid: devOpenid },
+      update: { lastLoginAt: new Date() },
+      create: {
+        openid: devOpenid,
+        nickname: '开发后门账号',
+        lastLoginAt: new Date(),
+      },
+    });
   }
 
   private parseExpiresInToSeconds(expr: string): number {

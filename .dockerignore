@@ -1,0 +1,33 @@
+# Docker build 上下文过滤器。避免把 node_modules / dist / IDE 文件送到 docker daemon。
+
+**/node_modules
+**/dist
+**/build
+**/.next
+**/.turbo
+**/.cache
+**/coverage
+
+# workspace 内的 app 包不需要在 build 上下文里（Dockerfile 只构建 api）
+apps/admin
+apps/miniapp
+
+# 编辑器 / 环境
+.vscode
+.idea
+.DS_Store
+*.log
+.env
+.env.*
+!.env.example
+
+# git / ci 元数据
+.git
+.github
+.claude
+
+# 文档 / 备份
+docs
+docs_backup*
+docs_backup_prompt.md
+skills

@@ -1,65 +1,67 @@
-import { View, Text, ScrollView } from '@tarojs/components';
+import { View, Text, ScrollView, Textarea } from '@tarojs/components';
+import type { BaseEventOrig, TextareaProps } from '@tarojs/components';
 import Taro, { useRouter } from '@tarojs/taro';
 import { useState } from 'react';
 import { NavBar } from '../../../components/ui/NavBar';
 import { Button } from '../../../components/ui/Button';
 import { Tag } from '../../../components/ui/Tag';
 import { TU } from '../../../constants/tokens';
-
-// Route params: orderNo
-// The order referenced by MOCK_PAL_ORDERS pending_report entry
-const MOCK_ORDER = {
-  orderNo: 'SX2404221185',
-  user: '奶茶要七分糖',
-  game: 'lol',
-  gameName: '英雄联盟',
-  svc: '巅峰赛陪练',
-  dur: 3,
-  total: 165,
-  startTime: '20:15',
-  actualDur: '02:18:42',
-  durNote: '20:15 开始 · 订单 3 小时，实际提前 42 分钟',
-};
+import { ApiError, submitReport } from '../../../services';
 
 const MAX_CONTENT = 500;
 
-const PLACEHOLDER_CONTENT = `请描述服务内容，例如：\n- 完成了 3 局排位，胜 2 负 1\n- 帮助老板从铂金 IV 晋级至铂金 III\n- 重点针对打野 Gank 节奏进行了讲解\n- 老板操作积极，执行力强`;
+const PLACEHOLDER_CONTENT = `请描述服务内容，例如：
+- 完成了 3 局排位，胜 2 负 1
+- 帮助老板从铂金 IV 晋级至铂金 III
+- 重点针对打野 Gank 节奏进行了讲解
+- 老板操作积极，执行力强`;
 
 export default function SubmitReportPage() {
   const router = useRouter();
-  const orderNo = router.params?.orderNo ?? MOCK_ORDER.orderNo;
+  // 新流程下传的是 orderId（BigInt 字符串）。兼容旧 orderNo（但后端只接 id）
+  const orderId = router.params?.orderId;
 
-  const [content, _setContent] = useState('');
-  const [duration, _setDuration] = useState(MOCK_ORDER.actualDur);
+  const [content, setContent] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [savingDraft, setSavingDraft] = useState(false);
 
-  // Fake screenshot placeholders
   const fakeScreenshots = ['#4A4A6A', '#3D5A80'];
 
   function handleSaveDraft() {
     setSavingDraft(true);
     setTimeout(() => {
       setSavingDraft(false);
-      Taro.showToast({ title: '草稿已保存', icon: 'success' });
-    }, 800);
+      Taro.showToast({ title: '草稿已保存（本地）', icon: 'success' });
+    }, 400);
   }
 
-  function handleSubmit() {
+  async function handleSubmit() {
+    if (!orderId) {
+      Taro.showToast({ title: '缺少订单 ID', icon: 'none' });
+      return;
+    }
     if (!content.trim()) {
       Taro.showToast({ title: '请填写服务内容', icon: 'none' });
       return;
     }
     setSubmitting(true);
-    setTimeout(() => {
-      setSubmitting(false);
+    try {
+      await submitReport(orderId, {
+        content: content.trim(),
+        // 截图上传未接入，暂不传 attachments
+      });
       Taro.showToast({ title: '提交成功，等待审核', icon: 'success' });
-      setTimeout(() => Taro.navigateBack(), 1500);
-    }, 1000);
+      setTimeout(() => Taro.navigateBack(), 1200);
+    } catch (err) {
+      const msg = err instanceof ApiError ? err.message : '提交失败';
+      Taro.showToast({ title: msg, icon: 'none' });
+    } finally {
+      setSubmitting(false);
+    }
   }
 
   function handleAddScreenshot() {
-    Taro.showToast({ title: '选择截图功能开发中', icon: 'none' });
+    Taro.showToast({ title: '截图上传尚未接入', icon: 'none' });
   }
 
   function handleModifyDuration() {
@@ -81,58 +83,43 @@ export default function SubmitReportPage() {
             gap: '16rpx',
           }}
         >
-          {/* 1. 订单概览卡片 */}
+          {/* 订单概览 */}
           <View
             style={{
               background: TU.white,
               borderRadius: `${TU.radiusLg * 2}rpx`,
-              overflow: 'hidden',
+              padding: '20rpx 24rpx',
               boxShadow: '0 2rpx 12rpx rgba(0,0,0,0.04)',
             }}
           >
-            {/* 卡头 */}
             <View
               style={{
                 display: 'flex',
                 flexDirection: 'row',
                 alignItems: 'center',
                 justifyContent: 'space-between',
-                padding: '20rpx 24rpx 16rpx',
-                borderBottom: `1rpx solid ${TU.borderLight}`,
               }}
             >
               <Text style={{ fontSize: '26rpx', fontWeight: 500, color: TU.text2 }}>
-                {MOCK_ORDER.gameName}
+                订单 {orderId ? `#${orderId.slice(-6)}` : '(未知)'}
               </Text>
-              <Text style={{ fontSize: '22rpx', color: TU.text3 }}>{orderNo.slice(-6)}</Text>
+              <Tag type="tint" size="small">
+                待提交战绩
+              </Tag>
             </View>
-            {/* 卡体 */}
-            <View style={{ padding: '20rpx 24rpx' }}>
-              <Text
-                style={{ fontSize: '30rpx', fontWeight: 600, color: TU.text, display: 'block' }}
-              >
-                {MOCK_ORDER.svc}
-              </Text>
-              <View
-                style={{
-                  display: 'flex',
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  marginTop: '10rpx',
-                }}
-              >
-                <Text style={{ fontSize: '22rpx', color: TU.text3 }}>
-                  老板 {MOCK_ORDER.user} · {MOCK_ORDER.dur} 小时
-                </Text>
-                <Text style={{ fontSize: '32rpx', fontWeight: 600, color: TU.error }}>
-                  ¥{MOCK_ORDER.total}
-                </Text>
-              </View>
-            </View>
+            <Text
+              style={{
+                fontSize: '22rpx',
+                color: TU.text3,
+                marginTop: '10rpx',
+                display: 'block',
+              }}
+            >
+              提交后将进入"等待管理员审核"状态，审核通过自动结算到你的积分账户。
+            </Text>
           </View>
 
-          {/* 2. 服务时长卡片 */}
+          {/* 服务时长占位（后端尚未提供"用时"独立字段给陪玩） */}
           <View
             style={{
               background: TU.white,
@@ -141,14 +128,13 @@ export default function SubmitReportPage() {
               boxShadow: '0 2rpx 12rpx rgba(0,0,0,0.04)',
             }}
           >
-            {/* 标题行 */}
             <View
               style={{
                 display: 'flex',
                 flexDirection: 'row',
                 alignItems: 'center',
                 gap: '12rpx',
-                marginBottom: '20rpx',
+                marginBottom: '16rpx',
               }}
             >
               <Text style={{ fontSize: '28rpx', fontWeight: 600, color: TU.text }}>服务时长</Text>
@@ -156,58 +142,24 @@ export default function SubmitReportPage() {
                 自动计时
               </Tag>
             </View>
-
-            {/* 大计时器 */}
-            <View
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                padding: '12rpx 0',
-              }}
-            >
-              <Text
-                style={{
-                  fontSize: '80rpx',
-                  fontWeight: 300,
-                  color: TU.text,
-                  letterSpacing: '4rpx',
-                  fontVariantNumeric: 'tabular-nums',
-                }}
-              >
-                {duration}
-              </Text>
-            </View>
-
-            {/* 副文本 */}
             <Text
               style={{
                 fontSize: '22rpx',
                 color: TU.text3,
                 display: 'block',
-                textAlign: 'center',
-                marginBottom: '24rpx',
+                marginBottom: '16rpx',
               }}
             >
-              {MOCK_ORDER.durNote}
+              由订单 `startedAt` / `finishedAt` 推导，提交时由后端自动计算。
             </Text>
-
-            {/* 操作按钮 */}
             <View style={{ display: 'flex', flexDirection: 'row', gap: '16rpx' }}>
               <Button full onClick={handleModifyDuration}>
                 手动修改
               </Button>
-              <Button
-                type="default"
-                full
-                onClick={() => Taro.showToast({ title: '已使用此时长', icon: 'success' })}
-              >
-                使用此时长
-              </Button>
             </View>
           </View>
 
-          {/* 3. 服务内容卡片 */}
+          {/* 服务内容（真 Textarea） */}
           <View
             style={{
               background: TU.white,
@@ -226,8 +178,7 @@ export default function SubmitReportPage() {
               }}
             >
               <Text style={{ fontSize: '28rpx', fontWeight: 600, color: TU.text }}>
-                服务内容
-                <Text style={{ color: TU.error }}>*</Text>
+                服务内容 <Text style={{ color: TU.error }}>*</Text>
               </Text>
               <Text
                 style={{
@@ -238,30 +189,27 @@ export default function SubmitReportPage() {
                 {content.length}/{MAX_CONTENT}
               </Text>
             </View>
-            {/* 用 View 模拟 textarea，因为真实项目会接 Taro.Textarea */}
-            <View
+            <Textarea
+              value={content}
+              maxlength={MAX_CONTENT}
+              placeholder={PLACEHOLDER_CONTENT}
+              onInput={(e: BaseEventOrig<TextareaProps.onInputEventDetail>) =>
+                setContent(e.detail.value)
+              }
               style={{
+                width: '100%',
                 minHeight: '240rpx',
                 background: TU.bgPage,
                 borderRadius: `${TU.radius}rpx`,
                 padding: '20rpx',
-                position: 'relative',
+                fontSize: '26rpx',
+                color: TU.text,
+                lineHeight: 1.7,
               }}
-              onClick={() => Taro.showToast({ title: '请输入服务内容', icon: 'none' })}
-            >
-              {content ? (
-                <Text style={{ fontSize: '26rpx', color: TU.text, lineHeight: '1.7' }}>
-                  {content}
-                </Text>
-              ) : (
-                <Text style={{ fontSize: '26rpx', color: TU.text3, lineHeight: '1.7' }}>
-                  {PLACEHOLDER_CONTENT}
-                </Text>
-              )}
-            </View>
+            />
           </View>
 
-          {/* 4. 战绩截图卡片 */}
+          {/* 战绩截图（未接入上传） */}
           <View
             style={{
               background: TU.white,
@@ -281,12 +229,11 @@ export default function SubmitReportPage() {
             >
               <Text style={{ fontSize: '28rpx', fontWeight: 600, color: TU.text }}>战绩截图</Text>
               <Text style={{ fontSize: '22rpx', color: TU.text3 }}>
-                （{fakeScreenshots.length}/9）
+                ({fakeScreenshots.length}/9，尚未接入上传)
               </Text>
             </View>
 
             <View style={{ display: 'flex', flexDirection: 'row', flexWrap: 'wrap', gap: '16rpx' }}>
-              {/* 已上传截图 */}
               {fakeScreenshots.map((bgColor, i) => (
                 <View
                   key={i}
@@ -299,24 +246,6 @@ export default function SubmitReportPage() {
                     overflow: 'hidden',
                   }}
                 >
-                  {/* 删除按钮 */}
-                  <View
-                    style={{
-                      position: 'absolute',
-                      top: '8rpx',
-                      right: '8rpx',
-                      width: '40rpx',
-                      height: '40rpx',
-                      borderRadius: '20rpx',
-                      background: 'rgba(0,0,0,0.45)',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                    }}
-                  >
-                    <Text style={{ color: TU.white, fontSize: '22rpx', lineHeight: '1' }}>×</Text>
-                  </View>
-                  {/* 游戏截图占位图案 */}
                   <View
                     style={{
                       position: 'absolute',
@@ -325,13 +254,11 @@ export default function SubmitReportPage() {
                     }}
                   >
                     <Text style={{ fontSize: '18rpx', color: 'rgba(255,255,255,0.5)' }}>
-                      截图 {i + 1}
+                      占位 {i + 1}
                     </Text>
                   </View>
                 </View>
               ))}
-
-              {/* 添加按钮 */}
               <View
                 style={{
                   width: '196rpx',
@@ -350,61 +277,6 @@ export default function SubmitReportPage() {
                 <Text style={{ fontSize: '52rpx', color: TU.text4, lineHeight: '1' }}>+</Text>
                 <Text style={{ fontSize: '22rpx', color: TU.text3 }}>添加截图</Text>
               </View>
-            </View>
-          </View>
-
-          {/* 5. 结算预览卡片 */}
-          <View
-            style={{
-              background: TU.white,
-              borderRadius: `${TU.radiusLg * 2}rpx`,
-              padding: '24rpx',
-              boxShadow: '0 2rpx 12rpx rgba(0,0,0,0.04)',
-              display: 'flex',
-              flexDirection: 'row',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-            }}
-          >
-            <View>
-              <Text
-                style={{
-                  fontSize: '22rpx',
-                  color: TU.text3,
-                  display: 'block',
-                  marginBottom: '8rpx',
-                }}
-              >
-                预计结算
-              </Text>
-              <Text style={{ fontSize: '40rpx', fontWeight: 600, color: TU.error }}>
-                ¥{MOCK_ORDER.total}
-                <Text style={{ fontSize: '22rpx', color: TU.text3, fontWeight: 400 }}> 元</Text>
-              </Text>
-            </View>
-            <View style={{ maxWidth: '240rpx' }}>
-              <Text
-                style={{
-                  fontSize: '20rpx',
-                  color: TU.text3,
-                  lineHeight: '1.6',
-                  textAlign: 'right',
-                  display: 'block',
-                }}
-              >
-                默认 = 订单金额
-              </Text>
-              <Text
-                style={{
-                  fontSize: '20rpx',
-                  color: TU.text3,
-                  lineHeight: '1.6',
-                  textAlign: 'right',
-                  display: 'block',
-                }}
-              >
-                老板审核时可能调整
-              </Text>
             </View>
           </View>
         </View>
@@ -426,10 +298,10 @@ export default function SubmitReportPage() {
           paddingBottom: 'calc(16rpx + env(safe-area-inset-bottom))',
         }}
       >
-        <Button full onClick={handleSaveDraft} type={savingDraft ? 'default' : undefined}>
+        <Button full onClick={handleSaveDraft} disabled={savingDraft}>
           {savingDraft ? '保存中…' : '存草稿'}
         </Button>
-        <Button type="primary" full onClick={handleSubmit}>
+        <Button type="primary" full onClick={handleSubmit} disabled={submitting}>
           {submitting ? '提交中…' : '提交审核'}
         </Button>
       </View>

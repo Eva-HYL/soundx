@@ -1,25 +1,72 @@
 import { View, Text, ScrollView } from '@tarojs/components';
 import Taro from '@tarojs/taro';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { NavBar } from '../../../components/ui/NavBar';
 import { Tag } from '../../../components/ui/Tag';
 import { Button } from '../../../components/ui/Button';
 import { TU } from '../../../constants/tokens';
 import { MOCK_SERVICES, MOCK_PALS } from '../../../mock/data';
+import { ApiError, createOrder } from '../../../services';
 
 const DURATIONS = [0.5, 1, 2, 3, 4, 5];
 
 export default function PlaceOrderPage() {
   const params = Taro.getCurrentInstance().router?.params ?? {};
-  const palId = params.palId ?? 'P001';
-  const serviceId = params.serviceId ?? 's1';
 
-  const pal = MOCK_PALS.find(p => p.id === palId) ?? MOCK_PALS[0];
-  const service = MOCK_SERVICES.find(s => s.id === serviceId) ?? MOCK_SERVICES[0];
+  // URL 参数（由 home 页带来）。若没有（例如用户直接进入此页测试），fallback 到 mock
+  const clubId = params.clubId;
+  const palId = params.palId;
+  const palName = params.palName;
+  const serviceTypeParam = params.serviceType;
+  const pricePerHourParam = params.pricePerHour;
+
+  // 仅用于展示："如果有真实参数就用真实；否则用 mock 兜底避免崩页"
+  const fallbackPal = MOCK_PALS.find(p => String(p.id) === palId) ?? MOCK_PALS[0];
+  const fallbackService = MOCK_SERVICES[0];
+  const display = useMemo(() => {
+    return {
+      palName: palName || fallbackPal.name,
+      palTier: fallbackPal.tier,
+      palOrders: fallbackPal.orders,
+      serviceName: serviceTypeParam || fallbackService.name,
+      pricePerHour: pricePerHourParam
+        ? parseFloat(pricePerHourParam)
+        : fallbackService.price,
+    };
+  }, [palName, serviceTypeParam, pricePerHourParam, fallbackPal, fallbackService]);
 
   const [duration, setDuration] = useState<number>(2);
+  const [submitting, setSubmitting] = useState(false);
 
-  const total = service.price * duration;
+  const total = display.pricePerHour * duration;
+
+  async function handleSubmit() {
+    if (!clubId || !palId || !serviceTypeParam || !pricePerHourParam) {
+      Taro.showToast({ title: '下单信息不完整', icon: 'none' });
+      return;
+    }
+    setSubmitting(true);
+    try {
+      const created = await createOrder({
+        clubId,
+        playerId: palId,
+        orderType: 'designated',
+        dispatchMode: 'designated',
+        serviceType: serviceTypeParam,
+        pricePerHour: pricePerHourParam,
+        hours: duration,
+      });
+      Taro.showToast({ title: '下单成功', icon: 'success', duration: 1000 });
+      setTimeout(() => {
+        Taro.redirectTo({ url: `/pages/order/detail/index?orderId=${created.id}` });
+      }, 800);
+    } catch (err) {
+      const msg = err instanceof ApiError ? err.message : '下单失败';
+      Taro.showToast({ title: msg, icon: 'none' });
+    } finally {
+      setSubmitting(false);
+    }
+  }
 
   return (
     <View
@@ -42,7 +89,6 @@ export default function PlaceOrderPage() {
             boxShadow: '0 2rpx 12rpx rgba(0,0,0,0.04)',
           }}
         >
-          {/* Avatar */}
           <View
             style={{
               width: '96rpx',
@@ -56,16 +102,17 @@ export default function PlaceOrderPage() {
             }}
           >
             <Text style={{ color: TU.white, fontSize: '36rpx', fontWeight: 600 }}>
-              {pal.name[0]}
+              {display.palName[0] ?? 'P'}
             </Text>
           </View>
 
-          {/* Info */}
           <View style={{ flex: 1, minWidth: 0 }}>
             <View
               style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '12rpx' }}
             >
-              <Text style={{ fontSize: '30rpx', fontWeight: 600, color: TU.text }}>{pal.name}</Text>
+              <Text style={{ fontSize: '30rpx', fontWeight: 600, color: TU.text }}>
+                {display.palName}
+              </Text>
               <Tag type="tint" size="small">
                 认证陪玩
               </Tag>
@@ -73,11 +120,10 @@ export default function PlaceOrderPage() {
             <Text
               style={{ fontSize: '22rpx', color: TU.text3, marginTop: '6rpx', display: 'block' }}
             >
-              {pal.tier} · 接单 {pal.orders} · 好评率 99%
+              {display.palTier} · 接单 {display.palOrders} · 好评率 99%
             </Text>
           </View>
 
-          {/* Chevron */}
           <Text style={{ fontSize: '28rpx', color: TU.text4 }}>›</Text>
         </View>
 
@@ -103,7 +149,7 @@ export default function PlaceOrderPage() {
           >
             <Text style={{ fontSize: '28rpx', color: TU.text2 }}>服务</Text>
             <Text style={{ fontSize: '28rpx', color: TU.text, fontWeight: 500 }}>
-              {service.name}
+              {display.serviceName}
             </Text>
           </View>
           <View
@@ -117,7 +163,7 @@ export default function PlaceOrderPage() {
           >
             <Text style={{ fontSize: '28rpx', color: TU.text2 }}>单价</Text>
             <Text style={{ fontSize: '28rpx', color: TU.error, fontWeight: 500 }}>
-              ¥{service.price}
+              ¥{display.pricePerHour.toFixed(2)}
               <Text style={{ fontSize: '22rpx', color: TU.text3, fontWeight: 400 }}>/h</Text>
             </Text>
           </View>
@@ -174,7 +220,6 @@ export default function PlaceOrderPage() {
                 </View>
               );
             })}
-            {/* Custom chip */}
             <View
               style={{
                 width: '148rpx',
@@ -188,53 +233,6 @@ export default function PlaceOrderPage() {
               }}
             >
               <Text style={{ fontSize: '26rpx', color: TU.text3 }}>自定义</Text>
-            </View>
-          </View>
-        </View>
-
-        {/* Remarks + Contact */}
-        <View
-          style={{
-            margin: '16rpx 24rpx 0',
-            background: TU.white,
-            borderRadius: `${TU.radiusLg * 2}rpx`,
-            overflow: 'hidden',
-            boxShadow: '0 2rpx 12rpx rgba(0,0,0,0.04)',
-          }}
-        >
-          <View
-            style={{
-              display: 'flex',
-              flexDirection: 'row',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              padding: '24rpx 28rpx',
-              borderBottom: `1rpx solid ${TU.borderLight}`,
-            }}
-          >
-            <Text style={{ fontSize: '28rpx', color: TU.text2 }}>备注</Text>
-            <View
-              style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '8rpx' }}
-            >
-              <Text style={{ fontSize: '26rpx', color: TU.text4 }}>请输入备注信息</Text>
-              <Text style={{ fontSize: '28rpx', color: TU.text4 }}>›</Text>
-            </View>
-          </View>
-          <View
-            style={{
-              display: 'flex',
-              flexDirection: 'row',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              padding: '24rpx 28rpx',
-            }}
-          >
-            <Text style={{ fontSize: '28rpx', color: TU.text2 }}>联系方式</Text>
-            <View
-              style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '8rpx' }}
-            >
-              <Text style={{ fontSize: '26rpx', color: TU.text4 }}>微信 / 手机号</Text>
-              <Text style={{ fontSize: '28rpx', color: TU.text4 }}>›</Text>
             </View>
           </View>
         </View>
@@ -256,7 +254,7 @@ export default function PlaceOrderPage() {
             ℹ
           </Text>
           <Text style={{ fontSize: '24rpx', color: TU.brand, lineHeight: '1.6' }}>
-            平台不代收款。下单后会生成订单号和俱乐部收款码，转账后上传凭证，管理员确认即自动派单。
+            平台不代收款。下单后生成订单号，转账后上传凭证，管理员确认即自动派单。
           </Text>
         </View>
 
@@ -279,15 +277,11 @@ export default function PlaceOrderPage() {
         <View>
           <Text style={{ fontSize: '24rpx', color: TU.text3 }}>合计 </Text>
           <Text style={{ fontSize: '40rpx', color: TU.error, fontWeight: 600 }}>
-            ¥{total % 1 === 0 ? `${total}.00` : total.toFixed(2)}
+            ¥{total.toFixed(2)}
           </Text>
         </View>
-        <Button
-          type="primary"
-          size="large"
-          onClick={() => Taro.navigateTo({ url: '/pages/order/detail/index?orderNo=SX240423001' })}
-        >
-          确认下单
+        <Button type="primary" size="large" onClick={handleSubmit} disabled={submitting}>
+          {submitting ? '提交中…' : '确认下单'}
         </Button>
       </View>
     </View>

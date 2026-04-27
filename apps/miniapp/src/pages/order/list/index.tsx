@@ -1,39 +1,99 @@
 import { View, Text, ScrollView } from '@tarojs/components';
 import Taro from '@tarojs/taro';
-import { useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { NavBar } from '../../../components/ui/NavBar';
 import { TabBar } from '../../../components/ui/TabBar';
 import { Tabs } from '../../../components/ui/Tabs';
 import { StatusTag } from '../../../components/ui/Tag';
 import { Button } from '../../../components/ui/Button';
-import { TU, GAME_MAP, ORDER_STATUS_MAP } from '../../../constants/tokens';
-import { MOCK_USER_ORDERS } from '../../../mock/data';
+import { TU } from '../../../constants/tokens';
+import {
+  ApiError,
+  cancelOrder,
+  listMyOrders,
+  type OrderDto,
+} from '../../../services';
 
-type OrderStatus = keyof typeof ORDER_STATUS_MAP;
-
-const TAB_KEYS: (OrderStatus | 'all')[] = ['all', 'pending_payment', 'in_service', 'completed'];
-const TAB_LABELS = ['全部', '待付款', '进行中', '已完成'];
-
-function getTabBadge(key: OrderStatus | 'all'): number {
-  if (key === 'all') return MOCK_USER_ORDERS.length;
-  return MOCK_USER_ORDERS.filter(o => o.status === key).length;
+interface OrderVM {
+  id: string;
+  orderNo: string;
+  serviceType: string;
+  palName: string;
+  hours: number;
+  total: number;
+  status: string;
+  detail: string;
+  createdAt: string | null;
 }
 
+function vmDetail(o: OrderDto): string {
+  switch (o.status) {
+    case 'pending_payment':
+      return '请尽快转账并上传凭证';
+    case 'paid_pending_dispatch':
+      return '已确认付款，等待派单';
+    case 'pending_accept':
+      return '已指派陪玩，等待接单';
+    case 'accepted':
+      return '陪玩已接单，待开始服务';
+    case 'in_service':
+      return o.startedAt
+        ? `服务开始于 ${new Date(o.startedAt).toLocaleTimeString().slice(0, 5)}`
+        : '服务进行中';
+    case 'pending_report':
+      return '服务已结束，陪玩正在填战绩';
+    case 'pending_report_audit':
+      return '战绩已提交，等待管理员审核';
+    case 'completed':
+      return o.finishedAt ? `完成于 ${new Date(o.finishedAt).toLocaleDateString()}` : '订单已完成';
+    case 'cancelled':
+      return o.cancelReason ? `已取消：${o.cancelReason}` : '订单已取消';
+    case 'closed':
+      return '订单已关闭';
+    default:
+      return '';
+  }
+}
+
+function toVM(o: OrderDto): OrderVM {
+  return {
+    id: o.id,
+    orderNo: o.orderNo,
+    serviceType: o.serviceType,
+    palName: o.playerName ?? o.player?.nickname ?? '待派发',
+    hours: o.hours ? parseFloat(o.hours) : 0,
+    total: o.totalAmount ? parseFloat(o.totalAmount) : 0,
+    status: o.status ?? '',
+    detail: vmDetail(o),
+    createdAt: o.createdAt,
+  };
+}
+
+// tab → 后端 status 过滤字符串
+const TAB_STATUS: (string | null)[] = [
+  null, // 全部
+  'pending_payment', // 待付款
+  'paid_pending_dispatch,pending_accept,accepted,in_service,pending_report,pending_report_audit', // 进行中
+  'completed', // 已完成
+];
+
+const TAB_LABELS = ['全部', '待付款', '进行中', '已完成'];
+
 interface OrderCardProps {
-  order: (typeof MOCK_USER_ORDERS)[number];
+  order: OrderVM;
+  onCancel: (id: string) => void;
+  cancelling: boolean;
   key?: string | number;
 }
 
-function OrderCard({ order }: OrderCardProps) {
+function OrderCard({ order, onCancel, cancelling }: OrderCardProps) {
   function goDetail() {
-    Taro.navigateTo({ url: `/pages/order/detail/index?orderNo=${order.orderNo}` });
+    Taro.navigateTo({ url: `/pages/order/detail/index?orderId=${order.id}` });
   }
 
   function goTip() {
-    Taro.navigateTo({ url: `/pages/finance/tip/index?orderNo=${order.orderNo}` });
+    Taro.navigateTo({ url: `/pages/order/tip/index?orderId=${order.id}` });
   }
-
-  const gameName = GAME_MAP[order.game] ?? order.game;
 
   return (
     <View
@@ -45,7 +105,6 @@ function OrderCard({ order }: OrderCardProps) {
         overflow: 'hidden',
       }}
     >
-      {/* Card header */}
       <View
         style={{
           display: 'flex',
@@ -57,19 +116,16 @@ function OrderCard({ order }: OrderCardProps) {
         }}
       >
         <View style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '12rpx' }}>
-          <Text style={{ fontSize: '22rpx', color: TU.text3 }}>{gameName}</Text>
+          <Text style={{ fontSize: '22rpx', color: TU.text3 }}>{order.serviceType}</Text>
           <Text style={{ fontSize: '20rpx', color: TU.text4 }}>#{order.orderNo.slice(-4)}</Text>
         </View>
         <StatusTag status={order.status} />
       </View>
 
-      {/* Card body */}
       <View style={{ padding: '20rpx 24rpx 16rpx' }}>
-        {/* Service name */}
         <Text style={{ fontSize: '30rpx', fontWeight: 600, color: TU.text, display: 'block' }}>
-          {order.svc}
+          {order.serviceType}
         </Text>
-        {/* Pal + duration */}
         <View
           style={{
             display: 'flex',
@@ -91,13 +147,12 @@ function OrderCard({ order }: OrderCardProps) {
               flexShrink: 0,
             }}
           >
-            <Text style={{ color: TU.white, fontSize: '18rpx' }}>{order.pal[0]}</Text>
+            <Text style={{ color: TU.white, fontSize: '18rpx' }}>{order.palName[0] ?? 'P'}</Text>
           </View>
-          <Text style={{ fontSize: '24rpx', color: TU.text2 }}>{order.pal}</Text>
+          <Text style={{ fontSize: '24rpx', color: TU.text2 }}>{order.palName}</Text>
           <Text style={{ fontSize: '24rpx', color: TU.text3 }}>·</Text>
-          <Text style={{ fontSize: '24rpx', color: TU.text3 }}>{order.dur}小时</Text>
+          <Text style={{ fontSize: '24rpx', color: TU.text3 }}>{order.hours}小时</Text>
         </View>
-        {/* Amount */}
         <View
           style={{
             display: 'flex',
@@ -109,17 +164,17 @@ function OrderCard({ order }: OrderCardProps) {
         >
           <Text style={{ fontSize: '22rpx', color: TU.text3 }}>实付</Text>
           <Text style={{ fontSize: '36rpx', fontWeight: 600, color: TU.error }}>
-            ¥{order.total}
+            ¥{order.total.toFixed(2)}
           </Text>
         </View>
       </View>
 
-      {/* Card detail */}
-      <View style={{ padding: '0 24rpx 16rpx' }}>
-        <Text style={{ fontSize: '22rpx', color: TU.text3 }}>{order.detail}</Text>
-      </View>
+      {order.detail && (
+        <View style={{ padding: '0 24rpx 16rpx' }}>
+          <Text style={{ fontSize: '22rpx', color: TU.text3 }}>{order.detail}</Text>
+        </View>
+      )}
 
-      {/* Card footer — action buttons */}
       <View
         style={{
           borderTop: `1rpx solid ${TU.borderLight}`,
@@ -135,9 +190,10 @@ function OrderCard({ order }: OrderCardProps) {
             <Button
               type="default"
               size="small"
-              onClick={() => Taro.showToast({ title: '订单已取消', icon: 'none' })}
+              disabled={cancelling}
+              onClick={() => onCancel(order.id)}
             >
-              取消订单
+              {cancelling ? '取消中…' : '取消订单'}
             </Button>
             <Button type="primary" size="small" onClick={goDetail}>
               去上传凭证
@@ -151,7 +207,7 @@ function OrderCard({ order }: OrderCardProps) {
           </Button>
         )}
 
-        {order.status === 'in_service' && (
+        {(order.status === 'accepted' || order.status === 'in_service') && (
           <>
             <Button
               type="default"
@@ -166,19 +222,27 @@ function OrderCard({ order }: OrderCardProps) {
           </>
         )}
 
+        {(order.status === 'pending_report' || order.status === 'pending_report_audit') && (
+          <Button type="default" size="small" onClick={goDetail}>
+            查看详情
+          </Button>
+        )}
+
         {order.status === 'completed' && (
           <>
             <Button type="default" size="small" onClick={goTip}>
               打赏
             </Button>
-            <Button
-              type="primary"
-              size="small"
-              onClick={() => Taro.navigateTo({ url: `/pages/player/detail/index?id=P001` })}
-            >
-              再来一单
+            <Button type="primary" size="small" onClick={goDetail}>
+              查看详情
             </Button>
           </>
+        )}
+
+        {(order.status === 'cancelled' || order.status === 'closed') && (
+          <Button type="default" size="small" onClick={goDetail}>
+            查看详情
+          </Button>
         )}
       </View>
     </View>
@@ -187,32 +251,72 @@ function OrderCard({ order }: OrderCardProps) {
 
 export default function OrderListPage() {
   const [activeTab, setActiveTab] = useState(0);
+  const [orders, setOrders] = useState<OrderVM[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [cancellingId, setCancellingId] = useState<string | null>(null);
+  const [tick, setTick] = useState(0);
 
-  const activeKey = TAB_KEYS[activeTab];
+  const reload = useCallback(() => setTick(t => t + 1), []);
 
-  const filtered =
-    activeKey === 'all' ? MOCK_USER_ORDERS : MOCK_USER_ORDERS.filter(o => o.status === activeKey);
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    setLoadError(null);
+    listMyOrders({
+      page: 1,
+      pageSize: 50,
+      status: TAB_STATUS[activeTab] ?? undefined,
+    })
+      .then(res => {
+        if (cancelled) return;
+        setOrders(res.list.map(toVM));
+      })
+      .catch((err: Error) => {
+        if (cancelled) return;
+        setLoadError(err.message);
+        setOrders([]);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [activeTab, tick]);
 
-  const tabLabels = TAB_LABELS.map((label, i) => {
-    const count = getTabBadge(TAB_KEYS[i]);
-    return count > 0 ? `${label} ${count}` : label;
-  });
+  async function handleCancel(orderId: string) {
+    setCancellingId(orderId);
+    try {
+      await cancelOrder(orderId, '用户主动取消');
+      Taro.showToast({ title: '订单已取消', icon: 'success' });
+      reload();
+    } catch (err) {
+      const msg = err instanceof ApiError ? err.message : '取消失败';
+      Taro.showToast({ title: msg, icon: 'none' });
+    } finally {
+      setCancellingId(null);
+    }
+  }
 
   return (
     <View
       style={{ height: '100vh', display: 'flex', flexDirection: 'column', background: TU.bgPage }}
     >
-      <NavBar title="我的订单" />
+      <NavBar title="我的订单" right={<Text style={{ fontSize: '24rpx', color: TU.brand }} onClick={reload}>刷新</Text>} />
 
-      {/* Tabs */}
       <View style={{ background: TU.white, borderBottom: `1rpx solid ${TU.borderLight}` }}>
-        <Tabs tabs={tabLabels} active={activeTab} onChange={setActiveTab} />
+        <Tabs tabs={TAB_LABELS} active={activeTab} onChange={setActiveTab} />
       </View>
 
-      {/* Order list */}
       <ScrollView scrollY style={{ flex: 1, height: 0, paddingTop: '20rpx' }}>
         <View style={{ height: '20rpx' }} />
-        {filtered.length === 0 ? (
+        {loading && (
+          <View style={{ padding: '40rpx 0', textAlign: 'center' }}>
+            <Text style={{ fontSize: '24rpx', color: TU.text3 }}>加载中…</Text>
+          </View>
+        )}
+        {!loading && orders.length === 0 ? (
           <View
             style={{
               display: 'flex',
@@ -223,10 +327,22 @@ export default function OrderListPage() {
             }}
           >
             <Text style={{ fontSize: '80rpx' }}>📋</Text>
-            <Text style={{ fontSize: '28rpx', color: TU.text3 }}>暂无相关订单</Text>
+            <Text style={{ fontSize: '28rpx', color: TU.text3 }}>
+              {loadError ? '加载失败' : '暂无相关订单'}
+            </Text>
+            {loadError && (
+              <Text style={{ fontSize: '22rpx', color: TU.text4 }}>{loadError}</Text>
+            )}
           </View>
         ) : (
-          filtered.map(order => <OrderCard key={order.orderNo} order={order} />)
+          orders.map(order => (
+            <OrderCard
+              key={order.id}
+              order={order}
+              onCancel={handleCancel}
+              cancelling={cancellingId === order.id}
+            />
+          ))
         )}
         <View style={{ height: '40rpx' }} />
       </ScrollView>

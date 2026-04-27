@@ -1,12 +1,13 @@
 import { View, Text, ScrollView } from '@tarojs/components';
 import Taro from '@tarojs/taro';
-import { useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useSafeArea } from '../../../hooks/useSafeArea';
 import { TabBar } from '../../../components/ui/TabBar';
 import { Tabs } from '../../../components/ui/Tabs';
 import { Tag } from '../../../components/ui/Tag';
 import { Button } from '../../../components/ui/Button';
 import { TU } from '../../../constants/tokens';
+import { ApiError, grabOrder, listOrderPool, type OrderDto } from '../../../services';
 
 const GAME_MAP: Record<string, string> = {
   hok: '王者荣耀',
@@ -17,54 +18,47 @@ const GAME_MAP: Record<string, string> = {
   val: '无畏契约',
 };
 
-const MOCK_ORDER_POOL = [
-  {
-    orderNo: 'SX240423001',
-    user: '咕咕不鸽',
-    game: 'hok',
-    svc: '排位上分',
-    dur: 2,
-    price: 40,
-    total: 80,
-    note: '想冲星耀，稳重一点',
-    ago: '刚刚',
-  },
-  {
-    orderNo: 'SX240422099',
-    user: '奶茶要七分糖',
-    game: 'lol',
-    svc: '巅峰赛陪练',
-    dur: 3,
-    price: 55,
-    total: 165,
-    note: '中单，想学打野反制',
-    ago: '2 分钟',
-  },
-  {
-    orderNo: 'SX240422098',
-    user: '摸鱼打工人',
-    game: 'apex',
-    svc: '娱乐开黑',
-    dur: 1,
-    price: 40,
-    total: 40,
-    note: '随便玩玩',
-    ago: '5 分钟',
-  },
-  {
-    orderNo: 'SX240422097',
-    user: '菜就多练',
-    game: 'hok',
-    svc: '教学指导',
-    dur: 2,
-    price: 55,
-    total: 110,
-    note: '上单，需要讲解 BP 思路',
-    ago: '8 分钟',
-  },
-];
+interface PoolItemVM {
+  id: string; // order id（调 grab 用）
+  orderNo: string;
+  user: string;
+  game: string;
+  svc: string;
+  dur: number;
+  price: number;
+  total: number;
+  note: string;
+  ago: string;
+}
 
-const POOL_TABS = ['全部 14', '王者 6', '英雄联盟 3', '原神 2', 'Apex 2'];
+function timeAgo(iso: string | null): string {
+  if (!iso) return '刚刚';
+  const diff = Date.now() - new Date(iso).getTime();
+  if (diff < 60_000) return '刚刚';
+  if (diff < 3_600_000) return `${Math.floor(diff / 60_000)} 分钟`;
+  if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)} 小时`;
+  return `${Math.floor(diff / 86_400_000)} 天`;
+}
+
+function toPoolVM(o: OrderDto): PoolItemVM {
+  const hours = o.hours ? parseFloat(o.hours) : 0;
+  const price = o.pricePerHour ? parseFloat(o.pricePerHour) : 0;
+  const total = o.totalAmount ? parseFloat(o.totalAmount) : 0;
+  return {
+    id: o.id,
+    orderNo: o.orderNo,
+    user: o.user?.nickname ?? '老板',
+    game: o.serviceType, // schema 未独立存游戏；暂用 serviceType 当游戏 tag
+    svc: o.serviceType,
+    dur: hours,
+    price,
+    total,
+    note: o.userRemark ?? '—',
+    ago: timeAgo(o.createdAt),
+  };
+}
+
+const POOL_TABS = ['全部', '王者', '英雄联盟', '原神', 'Apex'];
 
 type WorkStatus = 'online' | 'busy' | 'resting' | 'offline';
 
@@ -82,14 +76,52 @@ export default function OrderPoolPage() {
   const [workStatus, setWorkStatus] = useState<WorkStatus>('online');
   const [showStatusMenu, setShowStatusMenu] = useState(false);
 
+  const [orders, setOrders] = useState<PoolItemVM[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [refreshTick, setRefreshTick] = useState(0);
+
   const currentStatus = WORK_STATUS_OPTIONS.find(o => o.value === workStatus)!;
 
-  function handleGrab(orderNo: string) {
-    setGrabbingId(orderNo);
-    setTimeout(() => {
-      setGrabbingId(null);
+  const reload = useCallback(() => setRefreshTick(t => t + 1), []);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    setLoadError(null);
+    listOrderPool({ page: 1, pageSize: 20 })
+      .then(res => {
+        if (cancelled) return;
+        setOrders(res.list.map(toPoolVM));
+      })
+      .catch((err: Error) => {
+        if (cancelled) return;
+        setLoadError(err.message);
+        setOrders([]);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [refreshTick]);
+
+  async function handleGrab(orderId: string) {
+    setGrabbingId(orderId);
+    try {
+      await grabOrder(orderId);
       Taro.showToast({ title: '抢单成功！', icon: 'success' });
-    }, 1500);
+      // 从列表移除被抢走的这单
+      setOrders(prev => prev.filter(o => o.id !== orderId));
+    } catch (err) {
+      const msg = err instanceof ApiError ? err.message : '抢单失败';
+      Taro.showToast({ title: msg, icon: 'none' });
+      // 失败时拉一次列表确保数据新鲜
+      reload();
+    } finally {
+      setGrabbingId(null);
+    }
   }
 
   function handleStatusSelect(val: WorkStatus) {
@@ -288,7 +320,10 @@ export default function OrderPoolPage() {
             border: `1rpx solid ${TU.border}`,
             borderRadius: '28rpx',
           }}
-          onClick={() => Taro.showToast({ title: '已刷新', icon: 'success', duration: 800 })}
+          onClick={() => {
+            reload();
+            Taro.showToast({ title: '已刷新', icon: 'success', duration: 800 });
+          }}
         >
           <Text style={{ fontSize: '22rpx', color: TU.text2 }}>↻</Text>
           <Text style={{ fontSize: '22rpx', color: TU.text2 }}>刷新</Text>
@@ -305,12 +340,36 @@ export default function OrderPoolPage() {
             gap: '16rpx',
           }}
         >
-          {MOCK_ORDER_POOL.map((order, i) => {
-            const isGrabbing = grabbingId === order.orderNo;
+          {loading && (
+            <View style={{ padding: '40rpx 0', textAlign: 'center' }}>
+              <Text style={{ fontSize: '24rpx', color: TU.text3 }}>加载中…</Text>
+            </View>
+          )}
+          {!loading && orders.length === 0 && (
+            <View style={{ padding: '80rpx 40rpx', textAlign: 'center' }}>
+              <Text style={{ fontSize: '28rpx', color: TU.text3, display: 'block' }}>
+                {loadError ? '加载失败' : '暂无可抢订单'}
+              </Text>
+              {loadError && (
+                <Text
+                  style={{
+                    fontSize: '22rpx',
+                    color: TU.text4,
+                    display: 'block',
+                    marginTop: '12rpx',
+                  }}
+                >
+                  {loadError}
+                </Text>
+              )}
+            </View>
+          )}
+          {orders.map((order, i) => {
+            const isGrabbing = grabbingId === order.id;
             const isFirst = i === 0;
             return (
               <View
-                key={order.orderNo}
+                key={order.id}
                 style={{
                   background: TU.white,
                   borderRadius: `${TU.radiusLg * 2}rpx`,
@@ -404,7 +463,7 @@ export default function OrderPoolPage() {
                   <Button
                     type={isGrabbing ? 'default' : 'primary'}
                     circle
-                    onClick={() => !isGrabbing && handleGrab(order.orderNo)}
+                    onClick={() => !isGrabbing && handleGrab(order.id)}
                   >
                     {isGrabbing ? '抢单中…' : '抢单'}
                   </Button>

@@ -1,9 +1,10 @@
 import { View, Text, ScrollView, Input, Textarea } from '@tarojs/components';
 import Taro, { useRouter } from '@tarojs/taro';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { TU } from '../../../constants/tokens';
 import { NavBar } from '../../../components/ui/NavBar';
 import { Button } from '../../../components/ui/Button';
+import { ApiError, createReward, getOrderDetail, type OrderDto } from '../../../services';
 
 const PRESET_AMOUNTS = [
   { label: '¥6.6', sub: '鼓励', value: 6.6, hot: false },
@@ -20,11 +21,14 @@ const MAX_MSG = 100;
 
 export default function TipPage() {
   const router = useRouter();
-  const orderNo = router.params.orderNo ?? 'SX2404221185';
+  const orderId = router.params.orderId;
 
   const [selectedPreset, setSelectedPreset] = useState<number | null>(1);
   const [customAmount, setCustomAmount] = useState('');
   const [message, setMessage] = useState('');
+  const [order, setOrder] = useState<OrderDto | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
 
   const displayAmount = customAmount
     ? parseFloat(customAmount) || 0
@@ -32,10 +36,63 @@ export default function TipPage() {
       ? PRESET_AMOUNTS[selectedPreset].value
       : 0;
 
+  useEffect(() => {
+    if (!orderId) {
+      setLoadError('缺少订单 ID');
+      return;
+    }
+    let cancelled = false;
+    getOrderDetail(orderId)
+      .then(o => {
+        if (cancelled) return;
+        if (o.status !== 'completed') {
+          setLoadError(`订单状态为 ${o.status}，仅已完成订单可打赏`);
+        }
+        setOrder(o);
+      })
+      .catch((err: Error) => {
+        if (!cancelled) setLoadError(err.message);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [orderId]);
+
   const handlePhrase = (phrase: string) => {
     const next = message ? `${message} ${phrase}` : phrase;
     if (next.length <= MAX_MSG) setMessage(next);
   };
+
+  async function handleSubmit() {
+    if (!orderId) {
+      Taro.showToast({ title: '缺少订单 ID', icon: 'none' });
+      return;
+    }
+    if (displayAmount <= 0) {
+      Taro.showToast({ title: '请选择打赏金额', icon: 'none' });
+      return;
+    }
+    setSubmitting(true);
+    try {
+      const created = await createReward({
+        orderId,
+        amount: displayAmount.toFixed(2),
+        message: message.trim() || undefined,
+      });
+      Taro.showToast({ title: '打赏已提交，等待管理员确认到账', icon: 'success', duration: 1500 });
+      setTimeout(() => {
+        Taro.redirectTo({ url: `/pages/order/detail/index?orderId=${created.orderId}` });
+      }, 1200);
+    } catch (err) {
+      const msg = err instanceof ApiError ? err.message : '打赏失败';
+      Taro.showToast({ title: msg, icon: 'none' });
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  const palName = order?.player?.nickname ?? order?.playerName ?? '陪玩';
+  const orderDisplay = order?.orderNo ?? (orderId ? `#${orderId.slice(-6)}` : '(未知订单)');
 
   return (
     <View
@@ -69,23 +126,28 @@ export default function TipPage() {
               flexShrink: 0,
             }}
           >
-            <Text style={{ fontSize: '40rpx', color: TU.brand, fontWeight: 700 }}>带</Text>
+            <Text style={{ fontSize: '40rpx', color: TU.brand, fontWeight: 700 }}>
+              {palName[0] ?? 'P'}
+            </Text>
           </View>
           <View style={{ flex: 1 }}>
-            <Text style={{ fontSize: '32rpx', color: TU.text, fontWeight: 600 }}>带飞专业户</Text>
+            <Text style={{ fontSize: '32rpx', color: TU.text, fontWeight: 600 }}>{palName}</Text>
             <Text style={{ fontSize: '24rpx', color: TU.text3, marginTop: '6rpx' }}>
-              {orderNo} · 巅峰赛陪练
+              {orderDisplay}
+              {order?.serviceType ? ` · ${order.serviceType}` : ''}
             </Text>
             <View
               style={{
                 marginTop: '10rpx',
                 display: 'inline-flex',
-                background: TU.successTint,
+                background: loadError ? '#FFE8E8' : TU.successTint,
                 borderRadius: '4rpx',
                 padding: '4rpx 16rpx',
               }}
             >
-              <Text style={{ fontSize: '22rpx', color: TU.success }}>服务已完成</Text>
+              <Text style={{ fontSize: '22rpx', color: loadError ? TU.error : TU.success }}>
+                {loadError ?? '服务已完成'}
+              </Text>
             </View>
           </View>
         </View>
@@ -289,9 +351,10 @@ export default function TipPage() {
           type="primary"
           size="large"
           circle
-          onClick={() => Taro.showToast({ title: '打赏成功！', icon: 'success' })}
+          disabled={submitting || !!loadError || !order}
+          onClick={handleSubmit}
         >
-          确认打赏
+          {submitting ? '提交中…' : '确认打赏'}
         </Button>
       </View>
     </View>
