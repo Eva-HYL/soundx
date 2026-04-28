@@ -2,7 +2,7 @@
   "name": "@soundx/shared-types",
   "version": "0.0.0",
   "private": true,
-  "description": "SoundX 前后端共享类型、枚举、错误码、常量",
+  "description": "SoundX 前后端共享类型、枚kkk举、错误码、常量",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
@@ -13,7 +13,10 @@
       "default": "./dist/index.js"
     }
   },
-  "files": ["dist", "src"],
+  "files": [
+    "dist",
+    "src"
+  ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "dev": "tsc -p tsconfig.json --watch",
